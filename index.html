@@ -7,6 +7,10 @@
 <meta name="description" content="Sistema de gestión Pua E Te Ora Escuela de Danza">
 <meta name="theme-color" content="#e91e8c">
 <link rel="manifest" href="manifest.json">
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- Google API Client -->
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -497,7 +501,11 @@ textarea{resize:vertical;min-height:80px}
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
     <div class="topbar-actions">
-      <button class="btn btn-outline btn-sm" onclick="syncGoogle()">🔄 Sincronizar</button>
+      <div id="google-auth-status" style="display:flex;align-items:center;gap:6px">
+        <span id="google-user-chip" style="display:none;font-size:12px;color:var(--gray-600);background:var(--gray-100);padding:4px 10px;border-radius:20px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="btn btn-outline btn-sm" id="btn-sync" onclick="syncGoogle()" style="display:none">🔄 Sync</button>
+        <button class="btn btn-outline btn-sm" id="btn-google-login" onclick="googleSignIn()">🔗 Conectar Google</button>
+      </div>
       <button class="btn btn-primary btn-sm" onclick="limpiarFormAlumno();openModal('modal-alumno')">+ Nuevo alumno</button>
     </div>
   </div>
@@ -883,12 +891,12 @@ textarea{resize:vertical;min-height:80px}
               <label>Google Client ID</label>
               <input type="text" id="cfg-client-id" placeholder="xxxx.apps.googleusercontent.com" oninput="guardarConfig()">
             </div>
-            <div class="form-group">
-              <label>Google API Key</label>
-              <input type="text" id="cfg-api-key" placeholder="AIzaSy..." oninput="guardarConfig()">
-            </div>
-            <button class="btn btn-primary" onclick="testGoogleConnection()" style="justify-content:center">🔌 Probar conexión</button>
-            <div id="google-status" style="font-size:12px;color:var(--gray-400);text-align:center"></div>
+            <div id="google-status" style="font-size:12px;text-align:center;padding:4px 0;min-height:20px"></div>
+            <button class="btn btn-primary" onclick="testGoogleConnection()" style="justify-content:center;width:100%">🔗 Conectar con Google</button>
+            <button class="btn btn-outline" onclick="googleSignOut()" style="justify-content:center;width:100%;margin-top:6px">🚪 Cerrar sesión Google</button>
+            <hr style="border:none;border-top:1px solid var(--gray-100);margin:10px 0">
+            <button class="btn btn-success" onclick="syncGoogle()" style="justify-content:center;width:100%">⬆️ Subir datos a Sheets ahora</button>
+            <button class="btn btn-outline" onclick="importarDesdeSheets()" style="justify-content:center;width:100%;margin-top:6px">⬇️ Importar datos desde Sheets</button>
           </div>
         </div>
 
@@ -2569,15 +2577,296 @@ function confirmarBorrar(){
   });
 }
 
-// ══ GOOGLE SYNC (placeholder) ══
-function syncGoogle(){ toast('Configura Google Sheets en ⚙️ Configuración para sincronizar','info'); }
-function testGoogleConnection(){ 
-  const id=document.getElementById('cfg-client-id')?.value;
-  const el=document.getElementById('google-status');
-  if(!id){ if(el) el.textContent='⚠️ Ingresa el Client ID primero'; return; }
-  if(el) el.textContent='🔄 Probando conexión...';
-  setTimeout(()=>{ if(el) el.textContent='ℹ️ Configura OAuth en Google Cloud Console para activar'; },1500);
+// ══════════════════════════════════════════
+// GOOGLE SHEETS SYNC — OAuth 2.0
+// ══════════════════════════════════════════
+let gTokenClient = null;
+let gAccessToken = null;
+let gUserEmail = '';
+
+// Scopes necesarios
+const G_SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+
+// ── Inicializar Google Identity Services ──
+function initGoogle(){
+  const clientId = state.config.clientId;
+  if(!clientId){ return; }
+  try {
+    gTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: G_SCOPES,
+      callback: (resp) => {
+        if(resp.error){ 
+          toast('Error de autenticación: '+resp.error, 'error');
+          setGoogleStatus(false);
+          return; 
+        }
+        gAccessToken = resp.access_token;
+        // Obtener info del usuario
+        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers:{ Authorization: 'Bearer '+gAccessToken }
+        }).then(r=>r.json()).then(u=>{
+          gUserEmail = u.email||'';
+          setGoogleStatus(true);
+          toast('✅ Conectado como '+gUserEmail);
+        });
+      }
+    });
+  } catch(e){ console.warn('Google GSI no disponible aún:', e); }
 }
+
+// ── Actualizar UI según estado de conexión ──
+function setGoogleStatus(connected){
+  const chip = document.getElementById('google-user-chip');
+  const btnSync = document.getElementById('btn-sync');
+  const btnLogin = document.getElementById('btn-google-login');
+  const statusEl = document.getElementById('google-status');
+  if(connected){
+    if(chip){ chip.textContent = '🟢 '+gUserEmail; chip.style.display='block'; }
+    if(btnSync) btnSync.style.display='block';
+    if(btnLogin) btnLogin.style.display='none';
+    if(statusEl) statusEl.innerHTML='<span style="color:var(--green)">✅ Conectado como '+gUserEmail+'</span>';
+  } else {
+    if(chip) chip.style.display='none';
+    if(btnSync) btnSync.style.display='none';
+    if(btnLogin) btnLogin.style.display='block';
+    if(statusEl) statusEl.innerHTML='<span style="color:var(--gray-400)">Sin conexión</span>';
+    gAccessToken=null; gUserEmail='';
+  }
+}
+
+// ── Login con Google ──
+function googleSignIn(){
+  if(!state.config.clientId){
+    toast('Primero configura el Client ID en ⚙️ Configuración','error'); 
+    showPage('configuracion',null);
+    return;
+  }
+  if(!gTokenClient){ initGoogle(); }
+  if(!gTokenClient){ toast('Google API cargando, intenta en un momento','error'); return; }
+  gTokenClient.requestAccessToken({prompt:'consent'});
+}
+
+// ── Logout ──
+function googleSignOut(){
+  if(gAccessToken) google.accounts.oauth2.revoke(gAccessToken, ()=>{});
+  setGoogleStatus(false);
+  toast('Sesión de Google cerrada');
+}
+
+// ── Probar conexión (desde Configuración) ──
+function testGoogleConnection(){
+  const el = document.getElementById('google-status');
+  if(!state.config.clientId){
+    if(el) el.innerHTML='<span style="color:#dc2626">⚠️ Ingresa el Client ID primero</span>';
+    toast('Ingresa el Client ID primero','error'); return;
+  }
+  if(!gAccessToken){
+    if(el) el.innerHTML='<span style="color:var(--gray-400)">🔄 Iniciando sesión con Google...</span>';
+    googleSignIn(); return;
+  }
+  if(el) el.innerHTML='<span style="color:var(--green)">✅ Conectado como '+gUserEmail+'</span>';
+  toast('Ya estás conectado como '+gUserEmail);
+}
+
+// ══════════════════════════════════════
+// ESCRITURA EN GOOGLE SHEETS
+// ══════════════════════════════════════
+
+async function sheetsRequest(method, path, body=null){
+  if(!gAccessToken){ throw new Error('No autenticado'); }
+  const opts = {
+    method,
+    headers:{ 
+      'Authorization': 'Bearer '+gAccessToken,
+      'Content-Type': 'application/json'
+    }
+  };
+  if(body) opts.body = JSON.stringify(body);
+  const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets'+path, opts);
+  if(!r.ok){
+    const err = await r.json();
+    throw new Error(err.error?.message || 'Error de Sheets');
+  }
+  return r.json();
+}
+
+// Limpiar y escribir una hoja completa
+async function writeSheet(sheetName, headers, rows){
+  const sid = state.config.sheetsId;
+  if(!sid) throw new Error('No hay Sheet ID configurado');
+  
+  // Limpiar hoja
+  await sheetsRequest('POST', '/'+sid+'/values/'+encodeURIComponent(sheetName)+'!A1:ZZ10000:clear');
+  
+  // Escribir headers + datos
+  const values = [headers, ...rows];
+  await sheetsRequest('PUT', '/'+sid+'/values/'+encodeURIComponent(sheetName)+'!A1?valueInputOption=USER_ENTERED', {
+    range: sheetName+'!A1',
+    majorDimension: 'ROWS',
+    values
+  });
+}
+
+// Leer una hoja
+async function readSheet(sheetName){
+  const sid = state.config.sheetsId;
+  const r = await sheetsRequest('GET', '/'+sid+'/values/'+encodeURIComponent(sheetName));
+  return r.values || [];
+}
+
+// ══════════════════════════════════════
+// SINCRONIZACIÓN COMPLETA
+// ══════════════════════════════════════
+async function syncGoogle(){
+  if(!gAccessToken){ googleSignIn(); return; }
+  if(!state.config.sheetsId){ 
+    toast('Configura el Sheet ID en ⚙️ Configuración','error'); 
+    showPage('configuracion',null); return; 
+  }
+  
+  const btn = document.getElementById('btn-sync');
+  if(btn){ btn.textContent='⏳ Sync...'; btn.disabled=true; }
+  
+  try {
+    // ── Asegurar que las hojas existen ──
+    await ensureSheets();
+    
+    // ── Subir Alumnos ──
+    const alumnosRows = state.alumnos.map(a=>[
+      a.id, a.nombre, a.telefono||'', a.email||'', a.nacimiento||'',
+      a.modalidad||'', a.tipoPago||'', a.ingreso||'', a.estado||'activa', a.notas||''
+    ]);
+    await writeSheet('Alumnos',
+      ['ID','Nombre','Teléfono','Email','Nacimiento','Modalidad','Tipo pago','Ingreso','Estado','Notas'],
+      alumnosRows
+    );
+    
+    // ── Subir Pagos ──
+    const pagosRows = state.pagos.map(p=>{
+      const a = state.alumnos.find(x=>x.id==p.alumnaId);
+      return [
+        p.id, a?a.nombre:'—', p.conceptoLabel||p.concepto||'', 
+        p.periodo||'', p.montoPagado||0, p.promoNombre||'',
+        p.fecha||'', p.metodo||'', p.notas||''
+      ];
+    });
+    await writeSheet('Pagos',
+      ['ID','Alumna','Concepto','Período','Monto','Promoción','Fecha','Método','Notas'],
+      pagosRows
+    );
+    
+    // ── Subir Uniformes ──
+    const unifRows = state.uniformes.map(u=>{
+      const a = state.alumnos.find(x=>x.id==u.alumnaId);
+      return [
+        u.id, a?a.nombre:'—', u.piezas?.map(p=>p.nombre).join(', ')||'',
+        u.total||0, u.pago1||0, u.fecha1||'', u.pago2||0, u.fechaLiq||'', u.estado||''
+      ];
+    });
+    await writeSheet('Uniformes',
+      ['ID','Alumna','Piezas','Total','1er pago','Fecha 1er pago','2do pago','Fecha liquidación','Estado'],
+      unifRows
+    );
+    
+    // ── Subir Asistencia ──
+    const asistRows = [];
+    Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
+      Object.entries(clases||{}).forEach(([clase, alumnasObj])=>{
+        Object.entries(alumnasObj||{}).forEach(([alumnaId, status])=>{
+          const a = state.alumnos.find(x=>x.id==alumnaId);
+          asistRows.push([fecha, clase, a?a.nombre:'—', alumnaId, status]);
+        });
+      });
+    });
+    await writeSheet('Asistencia',
+      ['Fecha','Clase','Alumna','AlumnaID','Status'],
+      asistRows
+    );
+    
+    toast('✅ Sincronizado con Google Sheets');
+    
+    // Actualizar timestamp
+    const ts = new Date().toLocaleString('es-MX');
+    const el = document.getElementById('google-status');
+    if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
+    
+  } catch(e){
+    console.error('Sync error:', e);
+    toast('Error al sincronizar: '+e.message, 'error');
+  } finally {
+    if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
+  }
+}
+
+// ── Crear hojas si no existen ──
+async function ensureSheets(){
+  const sid = state.config.sheetsId;
+  const info = await sheetsRequest('GET', '/'+sid+'?fields=sheets.properties.title');
+  const existentes = (info.sheets||[]).map(s=>s.properties.title);
+  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia'];
+  const faltantes = necesarias.filter(n=>!existentes.includes(n));
+  
+  if(faltantes.length){
+    const requests = faltantes.map(title=>({ addSheet:{ properties:{ title } } }));
+    await sheetsRequest('POST', '/'+sid+':batchUpdate', { requests });
+  }
+}
+
+// ══════════════════════════════════════
+// IMPORTAR DESDE GOOGLE SHEETS
+// ══════════════════════════════════════
+async function importarDesdeSheets(){
+  if(!gAccessToken){ googleSignIn(); return; }
+  if(!state.config.sheetsId){ toast('Configura el Sheet ID primero','error'); return; }
+  
+  customConfirm('¿Importar datos desde Google Sheets? Esto reemplazará los datos locales de Alumnos y Pagos.', async ()=>{
+    try {
+      toast('⏳ Importando desde Sheets...');
+      
+      // Importar Alumnos
+      const alumnosData = await readSheet('Alumnos');
+      if(alumnosData.length > 1){
+        state.alumnos = alumnosData.slice(1).filter(r=>r[0]).map(r=>({
+          id: Number(r[0])||Date.now(),
+          nombre: r[1]||'', telefono: r[2]||'', email: r[3]||'',
+          nacimiento: r[4]||'', modalidad: r[5]||'', tipoPago: r[6]||'mensual',
+          ingreso: r[7]||'', estado: r[8]||'activa', notas: r[9]||''
+        }));
+        save('alumnos');
+      }
+      
+      // Importar Pagos
+      const pagosData = await readSheet('Pagos');
+      if(pagosData.length > 1){
+        state.pagos = pagosData.slice(1).filter(r=>r[0]).map(r=>{
+          const a = state.alumnos.find(x=>x.nombre===r[1]);
+          return {
+            id: Number(r[0])||Date.now(),
+            alumnaId: a?a.id:0,
+            conceptoLabel: r[2]||'', concepto: r[2]||'',
+            periodo: r[3]||'', montoPagado: Number(r[4])||0,
+            promoNombre: r[5]||'', fecha: r[6]||'',
+            metodo: r[7]||'', notas: r[8]||''
+          };
+        });
+        save('pagos');
+      }
+      
+      renderAlumnos(); renderDashboard();
+      toast('✅ Datos importados desde Google Sheets');
+    } catch(e){
+      toast('Error al importar: '+e.message, 'error');
+    }
+  });
+}
+
+// ── Inicializar Google cuando la API cargue ──
+window.addEventListener('load', ()=>{
+  setTimeout(()=>{ 
+    if(state.config.clientId) initGoogle(); 
+  }, 1500);
+});
 
 // ══ CONFIG TABS ══
 function switchCfgTab(id, btn){
