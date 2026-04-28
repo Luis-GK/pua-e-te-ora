@@ -1391,12 +1391,18 @@ let state = {
     {id:3,nombre:'Contemporáneo',dias:[6],hora:'10:00',duracion:90,color:'gold',precio:500}
   ],
   eventosClases: DB.get('eventosClases')||[],
-  editId: null
+  editId: null,
+  // Tracking de eliminaciones para sync con Sheets
+  deletedAlumnos: DB.get('deletedAlumnos')||[],
+  deletedPagos: DB.get('deletedPagos')||[],
+  deletedUniformes: DB.get('deletedUniformes')||[],
+  deletedAsistencia: DB.get('deletedAsistencia')||[]
 };
 let currentAlumnoId = null;
 let currentNotaFiltro = 'todas';
 
 function save(key){ DB.set(key, state[key]) }
+function saveDeleted(key){ DB.set(key, state[key]) }
 
 // ══ UI NAVIGATION ══
 function showPage(page, btn){
@@ -1742,6 +1748,11 @@ function limpiarFormAlumno(){
 
 function eliminarAlumno(id){
   customConfirm('¿Eliminar esta alumna?', ()=>{
+    // Registrar eliminación para sync con Sheets
+    if(!state.deletedAlumnos.includes(id)){
+      state.deletedAlumnos.push(id);
+      saveDeleted('deletedAlumnos');
+    }
     state.alumnos=state.alumnos.filter(a=>a.id!==id);
     save('alumnos');
     renderAlumnos(); renderDashboard();
@@ -1953,6 +1964,11 @@ function renderHistorialPagos(){
 
 function eliminarPago(id){
   customConfirm('¿Eliminar este pago?', ()=>{
+    // Registrar eliminación para sync con Sheets
+    if(!state.deletedPagos.includes(id)){
+      state.deletedPagos.push(id);
+      saveDeleted('deletedPagos');
+    }
     state.pagos=state.pagos.filter(p=>p.id!==id); save('pagos');
     renderPagosMes(); renderHistorialPagos(); renderDashboard(); toast('Pago eliminado');
     syncGoogle(true);
@@ -2076,7 +2092,14 @@ function registrar2doPago(id){
   save('uniformes'); renderUniformes(); renderDashboard(); toast('2do pago registrado');
 }
 
-function eliminarUniforme(id){ customConfirm('¿Eliminar este uniforme?', ()=>{ state.uniformes=state.uniformes.filter(u=>u.id!==id); save('uniformes'); renderUniformes(); renderDashboard(); toast('Uniforme eliminado'); syncGoogle(true); }); }
+function eliminarUniforme(id){ customConfirm('¿Eliminar este uniforme?', ()=>{
+  // Registrar eliminación para sync con Sheets
+  if(!state.deletedUniformes.includes(id)){
+    state.deletedUniformes.push(id);
+    saveDeleted('deletedUniformes');
+  }
+  state.uniformes=state.uniformes.filter(u=>u.id!==id); save('uniformes'); renderUniformes(); renderDashboard(); toast('Uniforme eliminado'); syncGoogle(true);
+}); }
 
 function renderPiezas(){
   const el=document.getElementById('lista-piezas'); if(!el) return;
@@ -2906,6 +2929,8 @@ function mergeAlumnos(local, remote){
   remote.forEach(r => {
     if(!r[0]) return; // Skip empty rows
     const remoteId = Number(r[0]);
+    // Ignorar si está en lista de eliminaciones
+    if(state.deletedAlumnos.includes(remoteId)) return;
     const existsLocal = local.find(a => a.id === remoteId);
     if(!existsLocal){
       // Alumno nuevo del remote, agregarlo
@@ -2932,6 +2957,8 @@ function mergePagos(local, remote, alumnosLocal){
   remote.forEach(r => {
     if(!r[0]) return;
     const remoteId = Number(r[0]);
+    // Ignorar si está en lista de eliminaciones
+    if(state.deletedPagos.includes(remoteId)) return;
     const existsLocal = local.find(p => p.id === remoteId);
     if(!existsLocal){
       // Buscar alumna por nombre
@@ -2959,6 +2986,8 @@ function mergeUniformes(local, remote, alumnosLocal){
   remote.forEach(r => {
     if(!r[0]) return;
     const remoteId = Number(r[0]);
+    // Ignorar si está en lista de eliminaciones
+    if(state.deletedUniformes.includes(remoteId)) return;
     const existsLocal = local.find(u => u.id === remoteId);
     if(!existsLocal){
       const alumnaNombre = r[1]||'';
@@ -3092,6 +3121,14 @@ async function syncGoogle(auto=false){
     if(typeof renderHistorialPagos === 'function') renderHistorialPagos();
     if(typeof renderUniformes === 'function') renderUniformes();
     if(typeof renderDashboard === 'function') renderDashboard();
+
+    // ── 6. Limpiar listas de eliminaciones después de sync exitoso ──
+    state.deletedAlumnos = [];
+    state.deletedPagos = [];
+    state.deletedUniformes = [];
+    saveDeleted('deletedAlumnos');
+    saveDeleted('deletedPagos');
+    saveDeleted('deletedUniformes');
 
   } catch(e){
     console.error('Sync error:', e);
