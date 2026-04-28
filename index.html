@@ -2648,9 +2648,40 @@ function confirmarBorrar(){
 let gTokenClient = null;
 let gAccessToken = null;
 let gUserEmail = '';
+let gTokenExpiry = null; // Timestamp de expiración del token
 
 // Scopes necesarios
 const G_SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+
+// ── Guardar token en localStorage ──
+function saveGoogleToken(token, email, expiry){
+  localStorage.setItem('peto_google_token', token);
+  localStorage.setItem('peto_google_email', email || '');
+  localStorage.setItem('peto_google_expiry', expiry || '');
+}
+
+// ── Cargar token desde localStorage ──
+function loadGoogleToken(){
+  const token = localStorage.getItem('peto_google_token');
+  const email = localStorage.getItem('peto_google_email');
+  const expiry = localStorage.getItem('peto_google_expiry');
+  return { token, email, expiry };
+}
+
+// ── Limpiar token de localStorage ──
+function clearGoogleToken(){
+  localStorage.removeItem('peto_google_token');
+  localStorage.removeItem('peto_google_email');
+  localStorage.removeItem('peto_google_expiry');
+}
+
+// ── Verificar si hay token válido ──
+function hasValidToken(){
+  const { token, expiry } = loadGoogleToken();
+  if(!token) return false;
+  if(expiry && Date.now() > Number(expiry)) return false; // Token expirado
+  return true;
+}
 
 // ── Inicializar Google Identity Services ──
 function initGoogle(){
@@ -2661,17 +2692,22 @@ function initGoogle(){
       client_id: clientId,
       scope: G_SCOPES,
       callback: (resp) => {
-        if(resp.error){ 
+        if(resp.error){
           toast('Error de autenticación: '+resp.error, 'error');
           setGoogleStatus(false);
-          return; 
+          return;
         }
         gAccessToken = resp.access_token;
+        // Guardar token con expiry (tokens típicamente duran 1 hora)
+        const expiryMs = Date.now() + (resp.expires_in || 3600) * 1000;
+        saveGoogleToken(gAccessToken, '', expiryMs);
+
         // Obtener info del usuario
         fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers:{ Authorization: 'Bearer '+gAccessToken }
         }).then(r=>r.json()).then(u=>{
           gUserEmail = u.email||'';
+          saveGoogleToken(gAccessToken, gUserEmail, expiryMs);
           setGoogleStatus(true);
           toast('✅ Conectado como '+gUserEmail);
         });
@@ -2694,7 +2730,7 @@ function updateSyncBanner(){
 }
 
 // ── Actualizar UI según estado de conexión ──
-function setGoogleStatus(connected){
+function setGoogleStatus(connected, skipSync=false){
   const chip = document.getElementById('google-user-chip');
   const btnSync = document.getElementById('btn-sync');
   const btnLogin = document.getElementById('btn-google-login');
@@ -2711,8 +2747,8 @@ function setGoogleStatus(connected){
     if(statusEl) statusEl.innerHTML='<span style="color:var(--green)">✅ Conectado como '+gUserEmail+'</span>';
     startInactivityMonitor(); // Iniciar monitoreo de inactividad
     updateSyncBanner(); // Actualizar banners de sync
-    // Sincronizar automáticamente al conectarse
-    if(state.config.sheetsId){
+    // Sincronizar automáticamente al conectarse (si no es skip)
+    if(!skipSync && state.config.sheetsId){
       syncGoogle();
     }
   } else {
@@ -2756,7 +2792,8 @@ function googleSignInFromLogin(){
     }, 2000);
     return;
   }
-  gTokenClient.requestAccessToken({prompt:'consent'});
+  // No forzar consentimiento si ya hay sesión previa
+  gTokenClient.requestAccessToken({prompt:''});
 }
 
 // ── Login con Google (desde topbar - ya logueado o re-log) ──
@@ -2768,12 +2805,13 @@ function googleSignIn(){
   }
   if(!gTokenClient){ initGoogle(); }
   if(!gTokenClient){ toast('Google API cargando, intenta en un momento','error'); return; }
-  gTokenClient.requestAccessToken({prompt:'consent'});
+  gTokenClient.requestAccessToken({prompt:''});
 }
 
 // ── Logout ──
 function googleSignOut(){
   if(gAccessToken) google.accounts.oauth2.revoke(gAccessToken, ()=>{});
+  clearGoogleToken(); // Limpiar token guardado
   setGoogleStatus(false);
   toast('Sesión de Google cerrada');
 }
@@ -2840,21 +2878,140 @@ async function readSheet(sheetName){
 }
 
 // ══════════════════════════════════════
-// SINCRONIZACIÓN COMPLETA (auto y manual)
+// SINCRONIZACIÓN BIDIRECCIONAL (auto y manual)
 // ══════════════════════════════════════
+
+// ── Mergear datos locales con datos de Sheets ──
+function mergeAlumnos(local, remote){
+  const merged = [...local];
+  remote.forEach(r => {
+    if(!r[0]) return; // Skip empty rows
+    const remoteId = Number(r[0]);
+    const existsLocal = local.find(a => a.id === remoteId);
+    if(!existsLocal){
+      // Alumno nuevo del remote, agregarlo
+      merged.push({
+        id: remoteId,
+        nombre: r[1]||'',
+        telefono: r[2]||'',
+        email: r[3]||'',
+        nacimiento: r[4]||'',
+        modalidad: r[5]||'',
+        tipoPago: r[6]||'mensual',
+        ingreso: r[7]||'',
+        estado: r[8]||'activa',
+        notas: r[9]||''
+      });
+    }
+    // Si existe en ambos, no hacemos nada (el local es la versión más reciente)
+  });
+  return merged;
+}
+
+function mergePagos(local, remote, alumnosLocal){
+  const merged = [...local];
+  remote.forEach(r => {
+    if(!r[0]) return;
+    const remoteId = Number(r[0]);
+    const existsLocal = local.find(p => p.id === remoteId);
+    if(!existsLocal){
+      // Buscar alumna por nombre
+      const alumnaNombre = r[1]||'';
+      const alumna = alumnosLocal.find(a => a.nombre === alumnaNombre);
+      merged.push({
+        id: remoteId,
+        alumnaId: alumna ? alumna.id : 0,
+        conceptoLabel: r[2]||'',
+        concepto: r[2]||'',
+        periodo: r[3]||'',
+        montoPagado: Number(r[4])||0,
+        promoNombre: r[5]||'',
+        fecha: r[6]||'',
+        metodo: r[7]||'',
+        notas: r[8]||''
+      });
+    }
+  });
+  return merged;
+}
+
+function mergeUniformes(local, remote, alumnosLocal){
+  const merged = [...local];
+  remote.forEach(r => {
+    if(!r[0]) return;
+    const remoteId = Number(r[0]);
+    const existsLocal = local.find(u => u.id === remoteId);
+    if(!existsLocal){
+      const alumnaNombre = r[1]||'';
+      const alumna = alumnosLocal.find(a => a.nombre === alumnaNombre);
+      merged.push({
+        id: remoteId,
+        alumnaId: alumna ? alumna.id : 0,
+        piezas: [],
+        total: Number(r[3])||0,
+        pago1: Number(r[4])||0,
+        fecha1: r[5]||'',
+        pago2: Number(r[6])||0,
+        fechaLiq: r[7]||'',
+        estado: r[8]||''
+      });
+    }
+  });
+  return merged;
+}
+
+function mergeAsistencia(local, remote, alumnosLocal){
+  const merged = { ...local };
+  remote.forEach(r => {
+    if(!r[0] || !r[1] || !r[3]) return;
+    const fecha = r[0];
+    const clase = r[1];
+    const alumnaId = r[3];
+    const status = r[4]||'ausente';
+    if(!merged[fecha]) merged[fecha] = {};
+    if(!merged[fecha][clase]) merged[fecha][clase] = {};
+    merged[fecha][clase][alumnaId] = status;
+  });
+  return merged;
+}
+
+// ── Sincronización completa bidireccional ──
 async function syncGoogle(auto=false){
-  // Si no hay conexión, no hacer nada (silencioso para auto-sync)
   if(!gAccessToken){ return; }
   if(!state.config.sheetsId){ return; }
-  
+
   const btn = document.getElementById('btn-sync');
   if(btn){ btn.textContent='⏳ Sync...'; btn.disabled=true; }
-  
+
   try {
-    // ── Asegurar que las hojas existen ──
     await ensureSheets();
-    
-    // ── Subir Alumnos ──
+
+    // ── 1. LEER datos de Sheets (para hacer merge) ──
+    const [alumnosData, pagosData, unifData, asistData] = await Promise.all([
+      readSheet('Alumnos'),
+      readSheet('Pagos'),
+      readSheet('Uniformes'),
+      readSheet('Asistencia')
+    ]);
+
+    // ── 2. MERGE: combinar datos locales con remotos ──
+    // Para alumnos y pagos, usar el más reciente (basado en ID que es Date.now())
+    const mergedAlumnos = mergeAlumnos(state.alumnos, alumnosData.slice(1));
+    const mergedPagos = mergePagos(state.pagos, pagosData.slice(1), mergedAlumnos);
+    const mergedUnif = mergeUniformes(state.uniformes, unifData.slice(1), mergedAlumnos);
+    const mergedAsist = mergeAsistencia(state.asistencia || {}, asistData.slice(1), mergedAlumnos);
+
+    // ── 3. GUARDAR merge en state local ──
+    state.alumnos = mergedAlumnos;
+    state.pagos = mergedPagos;
+    state.uniformes = mergedUnif;
+    state.asistencia = mergedAsist;
+    save('alumnos');
+    save('pagos');
+    save('uniformes');
+    save('asistencia');
+
+    // ── 4. SUBIR merge a Sheets ──
     const alumnosRows = state.alumnos.map(a=>[
       a.id, a.nombre, a.telefono||'', a.email||'', a.nacimiento||'',
       a.modalidad||'', a.tipoPago||'', a.ingreso||'', a.estado||'activa', a.notas||''
@@ -2863,12 +3020,11 @@ async function syncGoogle(auto=false){
       ['ID','Nombre','Teléfono','Email','Nacimiento','Modalidad','Tipo pago','Ingreso','Estado','Notas'],
       alumnosRows
     );
-    
-    // ── Subir Pagos ──
+
     const pagosRows = state.pagos.map(p=>{
       const a = state.alumnos.find(x=>x.id==p.alumnaId);
       return [
-        p.id, a?a.nombre:'—', p.conceptoLabel||p.concepto||'', 
+        p.id, a?a.nombre:'—', p.conceptoLabel||p.concepto||'',
         p.periodo||'', p.montoPagado||0, p.promoNombre||'',
         p.fecha||'', p.metodo||'', p.notas||''
       ];
@@ -2877,8 +3033,7 @@ async function syncGoogle(auto=false){
       ['ID','Alumna','Concepto','Período','Monto','Promoción','Fecha','Método','Notas'],
       pagosRows
     );
-    
-    // ── Subir Uniformes ──
+
     const unifRows = state.uniformes.map(u=>{
       const a = state.alumnos.find(x=>x.id==u.alumnaId);
       return [
@@ -2890,8 +3045,7 @@ async function syncGoogle(auto=false){
       ['ID','Alumna','Piezas','Total','1er pago','Fecha 1er pago','2do pago','Fecha liquidación','Estado'],
       unifRows
     );
-    
-    // ── Subir Asistencia ──
+
     const asistRows = [];
     Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
       Object.entries(clases||{}).forEach(([clase, alumnasObj])=>{
@@ -2905,17 +3059,24 @@ async function syncGoogle(auto=false){
       ['Fecha','Clase','Alumna','AlumnaID','Status'],
       asistRows
     );
-    
-    toast('✅ Sincronizado con Google Sheets');
-    
-    // Actualizar timestamp
+
+    // ── 5. Actualizar UI ──
+    if(!auto) toast('✅ Sincronizado con Google Sheets');
+
     const ts = new Date().toLocaleString('es-MX');
     const el = document.getElementById('google-status');
     if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
-    
+
+    // Actualizar vistas con datos mergeados
+    if(typeof renderAlumnos === 'function') renderAlumnos();
+    if(typeof renderPagosMes === 'function') renderPagosMes();
+    if(typeof renderHistorialPagos === 'function') renderHistorialPagos();
+    if(typeof renderUniformes === 'function') renderUniformes();
+    if(typeof renderDashboard === 'function') renderDashboard();
+
   } catch(e){
     console.error('Sync error:', e);
-    toast('Error al sincronizar: '+e.message, 'error');
+    if(!auto) toast('Error al sincronizar: '+e.message, 'error');
   } finally {
     if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
   }
@@ -3022,12 +3183,33 @@ function stopInactivityMonitor() {
   });
 }
 
+// ── Restaurar sesión de Google desde localStorage ──
+function restoreGoogleSession(){
+  const { token, email, expiry } = loadGoogleToken();
+  if(!token) return false;
+  if(expiry && Date.now() > Number(expiry)){
+    clearGoogleToken(); // Token expirado, limpiar
+    return false;
+  }
+  // Token válido, restaurarlo
+  gAccessToken = token;
+  gUserEmail = email || '';
+  setGoogleStatus(true, true); // skipSync porque haremos sync manualmente abajo
+  toast('✅ Sesión restaurada: '+gUserEmail);
+  // Hacer sync para traer datos de otros dispositivos
+  syncGoogle(true);
+  return true;
+}
+
 // ── Inicializar Google cuando la API cargue ──
 window.addEventListener('load', ()=>{
   setTimeout(()=>{
-    // Auto-conectar si hay clientId configurado (hardcoded o manual)
     if(state.config.clientId && state.config.clientId !== '') {
-      initGoogle();
+      // Intentar restaurar sesión existente primero
+      if(!restoreGoogleSession()){
+        // Si no hay sesión guardada, inicializar Google OAuth
+        initGoogle();
+      }
       startInactivityMonitor();
     }
     updateSyncBanner(); // Actualizar banners según estado de conexión
