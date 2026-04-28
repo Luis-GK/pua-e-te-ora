@@ -1713,6 +1713,7 @@ function guardarAlumno(){
   populateAlumnaSelects();
   actualizarSelects();
   actualizarSelectModalidad();
+  syncGoogle(true);
 }
 
 function limpiarFormAlumno(){
@@ -1734,6 +1735,7 @@ function eliminarAlumno(id){
     save('alumnos');
     renderAlumnos(); renderDashboard();
     toast('Alumna eliminada');
+    syncGoogle(true);
   });
 }
 
@@ -1818,6 +1820,7 @@ function guardarPago(){
   renderPagosMes(); renderHistorialPagos();
   renderDashboard();
   toast('Pago registrado');
+  syncGoogle(true);
 }
 
 function renderPagosMes(){
@@ -1933,6 +1936,7 @@ function eliminarPago(id){
   customConfirm('¿Eliminar este pago?', ()=>{
     state.pagos=state.pagos.filter(p=>p.id!==id); save('pagos');
     renderPagosMes(); renderHistorialPagos(); renderDashboard(); toast('Pago eliminado');
+    syncGoogle(true);
   });
 }
 
@@ -1973,6 +1977,7 @@ function guardarUniforme(){
   }
   save('uniformes');
   closeModal('modal-uniforme'); renderUniformes(); renderDashboard(); toast('Uniforme guardado');
+  syncGoogle(true);
 }
 
 function renderUniformes(){
@@ -2052,7 +2057,7 @@ function registrar2doPago(id){
   save('uniformes'); renderUniformes(); renderDashboard(); toast('2do pago registrado');
 }
 
-function eliminarUniforme(id){ customConfirm('¿Eliminar este uniforme?', ()=>{ state.uniformes=state.uniformes.filter(u=>u.id!==id); save('uniformes'); renderUniformes(); renderDashboard(); toast('Uniforme eliminado'); }); }
+function eliminarUniforme(id){ customConfirm('¿Eliminar este uniforme?', ()=>{ state.uniformes=state.uniformes.filter(u=>u.id!==id); save('uniformes'); renderUniformes(); renderDashboard(); toast('Uniforme eliminado'); syncGoogle(true); }); }
 
 function renderPiezas(){
   const el=document.getElementById('lista-piezas'); if(!el) return;
@@ -2131,7 +2136,7 @@ function setAsistencia(alumnaId, estado, btn, fechaParam){
   btn.classList.add('active');
 }
 
-function guardarAsistencia(){ save('asistencia'); renderHistAsistencia(); toast('Asistencia guardada'); }
+function guardarAsistencia(){ save('asistencia'); renderHistAsistencia(); toast('Asistencia guardada'); syncGoogle(true); }
 
 function renderHistAsistencia(){
   const tbody=document.getElementById('tabla-asistencia-hist'); if(!tbody) return;
@@ -2675,6 +2680,19 @@ function initGoogle(){
   } catch(e){ console.warn('Google GSI no disponible aún:', e); }
 }
 
+// ── Actualizar banner de sync en todas las páginas ──
+function updateSyncBanner(){
+  const banners = document.querySelectorAll('.sync-banner');
+  const isConnected = !!gAccessToken && !!state.config.sheetsId;
+  banners.forEach(banner => {
+    if(isConnected){
+      banner.style.display = 'none';
+    } else {
+      banner.style.display = 'flex';
+    }
+  });
+}
+
 // ── Actualizar UI según estado de conexión ──
 function setGoogleStatus(connected){
   const chip = document.getElementById('google-user-chip');
@@ -2692,6 +2710,11 @@ function setGoogleStatus(connected){
     if(btnLogin) btnLogin.style.display='none';
     if(statusEl) statusEl.innerHTML='<span style="color:var(--green)">✅ Conectado como '+gUserEmail+'</span>';
     startInactivityMonitor(); // Iniciar monitoreo de inactividad
+    updateSyncBanner(); // Actualizar banners de sync
+    // Sincronizar automáticamente al conectarse
+    if(state.config.sheetsId){
+      syncGoogle();
+    }
   } else {
     // Mostrar login screen y limpiar UI
     if(loginScreen) loginScreen.classList.remove('hidden');
@@ -2703,6 +2726,7 @@ function setGoogleStatus(connected){
     if(statusEl) statusEl.innerHTML='<span style="color:var(--gray-400)">Sin conexión</span>';
     gAccessToken=null; gUserEmail='';
     stopInactivityMonitor(); // Detener monitoreo de inactividad
+    updateSyncBanner(); // Actualizar banners de sync
   }
 }
 
@@ -2816,14 +2840,12 @@ async function readSheet(sheetName){
 }
 
 // ══════════════════════════════════════
-// SINCRONIZACIÓN COMPLETA
+// SINCRONIZACIÓN COMPLETA (auto y manual)
 // ══════════════════════════════════════
-async function syncGoogle(){
-  if(!gAccessToken){ googleSignIn(); return; }
-  if(!state.config.sheetsId){ 
-    toast('Configura el Sheet ID en ⚙️ Configuración','error'); 
-    showPage('configuracion',null); return; 
-  }
+async function syncGoogle(auto=false){
+  // Si no hay conexión, no hacer nada (silencioso para auto-sync)
+  if(!gAccessToken){ return; }
+  if(!state.config.sheetsId){ return; }
   
   const btn = document.getElementById('btn-sync');
   if(btn){ btn.textContent='⏳ Sync...'; btn.disabled=true; }
@@ -3008,6 +3030,7 @@ window.addEventListener('load', ()=>{
       initGoogle();
       startInactivityMonitor();
     }
+    updateSyncBanner(); // Actualizar banners según estado de conexión
   }, 1500);
 });
 
