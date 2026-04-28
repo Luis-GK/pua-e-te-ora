@@ -1405,6 +1405,9 @@ function showPage(page, btn){
   const pageEl=document.getElementById('page-'+page);
   if(!pageEl) return;
   pageEl.classList.add('active');
+  // Guardar página actual en localStorage
+  state.currentPage = page;
+  DB.set('currentPage', page);
   // Activar nav-item correcto siempre
   document.querySelectorAll('.nav-item').forEach(n=>{
     const oc=n.getAttribute('onclick')||'';
@@ -1454,6 +1457,14 @@ function openModal(id){
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
   state.editId = null;
+  // Limpiar modo pago rápido si se cierra el modal de pago
+  if(id === 'modal-pago'){
+    currentAlumnoId = null;
+    const selectAlumna = document.getElementById('p-alumna');
+    if(selectAlumna) selectAlumna.style.display = 'block';
+    const fija = document.getElementById('p-alumna-fija');
+    if(fija) fija.style.display = 'none';
+  }
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open')) });
 
@@ -1743,6 +1754,8 @@ function pagoRapido(alumnaId){
   populateAlumnaSelects();
   poblarSelectPromocion();
   const a=state.alumnos.find(x=>x.id===alumnaId);
+  // Guardar alumnaId en variable global para pago rápido
+  currentAlumnoId = alumnaId;
   // Preseleccionar alumna en el select (por si acaso)
   document.getElementById('p-alumna').value=alumnaId;
   // Mostrar modo "alumna fija" - ocultar select, mostrar nombre
@@ -1792,7 +1805,8 @@ function getPeriodoLabel(pago){
 }
 
 function guardarPago(){
-  const alumnaId=document.getElementById('p-alumna').value;
+  // Usar currentAlumnoId si está seteado (pago rápido), sino usar el select
+  const alumnaId = currentAlumnoId || document.getElementById('p-alumna').value;
   if(!alumnaId){ toast('Selecciona una alumna','error'); return; }
   const selPromo=document.getElementById('p-descuento-promo');
   const promoOpt=selPromo?selPromo.options[selPromo.selectedIndex]:null;
@@ -1817,6 +1831,11 @@ function guardarPago(){
   state.pagos.push(pago);
   save('pagos');
   closeModal('modal-pago');
+  // Limpiar modo pago rápido
+  currentAlumnoId = null;
+  document.getElementById('p-alumna').style.display='block';
+  const fija=document.getElementById('p-alumna-fija');
+  if(fija) fija.style.display='none';
   renderPagosMes(); renderHistorialPagos();
   renderDashboard();
   toast('Pago registrado');
@@ -3244,16 +3263,25 @@ function abrirModalPago(){
 
 // ══ CONFIRMACIÓN PROPIA (reemplaza confirm() del browser) ══
 function customConfirm(msg, onOk){
-  document.getElementById('confirm-msg').textContent=msg;
-  document.getElementById('confirm-btn-ok').onclick=()=>{
+  const confirmBtn = document.getElementById('confirm-btn-ok');
+  const confirmMsg = document.getElementById('confirm-msg');
+  const modal = document.getElementById('modal-confirm');
+  if(!confirmBtn || !confirmMsg || !modal){
+    console.error('Modal de confirmación no encontrado');
+    return;
+  }
+  confirmMsg.textContent = msg;
+  confirmBtn.onclick = ()=>{
     closeModal('modal-confirm');
     onOk();
   };
-  document.getElementById('modal-confirm').classList.add('open');
+  modal.classList.add('open');
 }
 
 (function init(){
-  renderDashboard();
+  // Restaurar página guardada (si existe)
+  const savedPage = DB.get('currentPage') || 'dashboard';
+  showPage(savedPage, null);
   const today=new Date().toISOString().split('T')[0];
   const fi=document.getElementById('a-ingreso'); if(fi) fi.value=today;
   const fp=document.getElementById('p-fecha'); if(fp) fp.value=today;
