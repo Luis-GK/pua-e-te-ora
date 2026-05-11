@@ -862,39 +862,7 @@ textarea{resize:vertical;min-height:80px}
     <div class="grid-dos-cols">
 
       <div class="card">
-        <div class="card-header"><span class="card-title">Precios de clases</span></div>
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Clase suelta (MXN)</label>
-            <div class="input-prefix"><span>$</span><input type="number" id="cfg-precio-clase" placeholder="0" oninput="guardarConfig()"></div>
-          </div>
-          <div class="form-group">
-            <label>Mensualidad (MXN)</label>
-            <div class="input-prefix"><span>$</span><input type="number" id="cfg-precio-mensual" placeholder="0" oninput="guardarConfig()"></div>
-          </div>
-          <div class="form-group">
-            <label>Pago bimestral (MXN)</label>
-            <div class="input-prefix"><span>$</span><input type="number" id="cfg-precio-bimestral" placeholder="0" oninput="guardarConfig()"></div>
-          </div>
-
-        </div>
-        <div class="form-group full" style="margin-top:14px">
-          <label>Otras promociones</label>
-          <div id="lista-promociones"></div>
-          <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="openModal('modal-promo')">+ Agregar promoción</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Modalidades de clase</span>
-          <button class="btn btn-primary btn-sm" onclick="openModal('modal-modalidad')">+ Agregar</button>
-        </div>
-        <div id="lista-modalidades-cfg"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">Escuela</span></div>
+        <div class="card-header"><span class="card-title">Información General</span></div>
         <div class="form-grid">
           <div class="form-group full">
             <label>Nombre de la escuela</label>
@@ -912,6 +880,22 @@ textarea{resize:vertical;min-height:80px}
             <label>Dirección</label>
             <input type="text" id="cfg-direccion" placeholder="Dirección del estudio..." oninput="guardarConfig()">
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Modalidades de clase</span>
+          <button class="btn btn-primary btn-sm" onclick="openModal('modal-modalidad')">+ Agregar</button>
+        </div>
+        <div id="lista-modalidades-cfg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Otras promociones</span></div>
+        <div class="form-grid">
+          <div id="lista-promociones"></div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="openModal('modal-promo')">+ Agregar promoción</button>
         </div>
       </div>
 
@@ -1316,6 +1300,10 @@ textarea{resize:vertical;min-height:80px}
               <input type="radio" name="mod-color" value="coral" style="display:none" class="color-radio">
               <span class="color-swatch" data-color="coral" style="width:28px;height:28px;border-radius:50%;background:#D85A30;border:3px solid transparent;display:block"></span>Coral
             </label>
+          </div>
+          <div class="form-group full">
+            <label>Precio de la modalidad ($)</label>
+            <input type="number" id="mod-precio" placeholder="Ej: 500">
           </div>
         </div>
 
@@ -2452,9 +2440,6 @@ function guardarConfig(){
   const savedClientId = document.getElementById('cfg-client-id')?.value?.trim() || state.config.clientId;
   const savedSheetsId = document.getElementById('cfg-sheets-id')?.value?.trim() || state.config.sheetsId;
   state.config={
-    precioClase:Number(document.getElementById('cfg-precio-clase')?.value)||0,
-    precioMensual:Number(document.getElementById('cfg-precio-mensual')?.value)||0,
-    precioBimestral:Number(document.getElementById('cfg-precio-bimestral')?.value)||0,
     sheetsId: savedSheetsId,
     clientId: savedClientId,
     apiKey:document.getElementById('cfg-api-key')?.value||'',
@@ -2524,6 +2509,7 @@ function editarModalidad(id){
   document.getElementById('mod-nombre').value=m.nombre||'';
   document.getElementById('mod-hora').value=m.hora||'17:00';
   document.getElementById('mod-duracion').value=m.duracion||60;
+  document.getElementById('mod-precio').value=m.precio||'';
 
   // Marcar días
   document.querySelectorAll('#mod-dias-check input').forEach(c=>{
@@ -2555,8 +2541,8 @@ function guardarModalidad(){
   const color=colorSel?colorSel.value:'pink';
   const hora=document.getElementById('mod-hora').value||'17:00';
   const duracion=Number(document.getElementById('mod-duracion').value)||60;
-  const precio=0;
-  const mod={id:state.editId||Date.now(),nombre,dias:diasCheck,hora,duracion,color};
+  const precio=Number(document.getElementById('mod-precio').value)||0;
+  const mod={id:state.editId||Date.now(),nombre,dias:diasCheck,hora,duracion,color,precio};
   if(state.editId){
     const i=state.modalidades.findIndex(m=>m.id===state.editId);
     state.modalidades[i]=mod;
@@ -2566,6 +2552,7 @@ function guardarModalidad(){
   save('modalidades');
   closeModal('modal-modalidad');
   document.getElementById('mod-nombre').value='';
+  document.getElementById('mod-precio').value='';
   state.editId=null;
   renderModalidadesCfg();
   renderHorario();
@@ -2606,12 +2593,33 @@ function onConceptoChange(){
   const hint=document.getElementById('p-monto-hint');
   const montoEl=document.getElementById('p-monto-normal');
   if(otroGrupo) otroGrupo.style.display=concepto==='otro'?'flex':'none';
-  const cfg=state.config;
+
   let monto=0; let label='';
-  if(concepto==='mensual'){ monto=cfg.precioMensual||0; label='Precio configurado de mensualidad'; montoEl.readOnly=true; montoEl.style.background='var(--gray-50)'; }
-  else if(concepto==='bimestral'){ monto=cfg.precioBimestral||0; label='Precio configurado de bimestral'; montoEl.readOnly=true; montoEl.style.background='var(--gray-50)'; }
-  else if(concepto==='clase'){ monto=cfg.precioClase||0; label='Precio configurado de clase suelta'; montoEl.readOnly=true; montoEl.style.background='var(--gray-50)'; }
-  else{ monto=0; label='Ingresa el monto manualmente'; montoEl.readOnly=false; montoEl.style.background='white'; }
+  const alumnaId=document.getElementById('p-alumna').value;
+  const alumna=state.alumnos.find(a=>a.id===alumnaId);
+  const modSugerida=alumna?state.modalidades.find(m=>m.nombre===alumna.modalidad):null;
+  const precioMod=modSugerida?modSugerida.precio:0;
+
+  if(concepto==='mensual'){
+    monto=precioMod||0;
+    label='Precio de la modalidad seleccionada';
+    montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
+  }
+  else if(concepto==='bimestral'){
+    monto=precioMod*2||0;
+    label='Doble del precio de la modalidad';
+    montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
+  }
+  else if(concepto==='clase'){
+    // Si no hay precio de clase específico en la modalidad, usamos un valor base o 0
+    monto=precioMod/4||0;
+    label='Precio estimado por clase (Mensual/4)';
+    montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
+  }
+  else{
+    monto=0; label='Ingresa el monto manualmente';
+    montoEl.readOnly=false; montoEl.style.background='white';
+  }
   montoEl.value=monto||'';
   if(hint) hint.textContent=label;
   calcularMontoPagar();
@@ -3008,17 +3016,34 @@ function mergeUniformes(local, remote, alumnosLocal){
   return merged;
 }
 
-function mergeAsistencia(local, remote, alumnosLocal){
+function mergeConfig(local, remote){
   const merged = { ...local };
+  remote.forEach(row => {
+    if(!row[0]) return;
+    const [key, value] = row;
+    // No sobreescribir IDs críticos si ya existen localmente
+    if(['sheetsId', 'clientId'].includes(key) && local[key]) return;
+    merged[key] = value;
+  });
+  return merged;
+}
+
+function mergeModalidades(local, remote){
+  const merged = [...local];
   remote.forEach(r => {
-    if(!r[0] || !r[1] || !r[3]) return;
-    const fecha = r[0];
-    const clase = r[1];
-    const alumnaId = r[3];
-    const status = r[4]||'ausente';
-    if(!merged[fecha]) merged[fecha] = {};
-    if(!merged[fecha][clase]) merged[fecha][clase] = {};
-    merged[fecha][clase][alumnaId] = status;
+    if(!r[0]) return;
+    const remoteId = Number(r[0]);
+    if(!local.find(m => m.id === remoteId)){
+      merged.push({
+        id: remoteId,
+        nombre: r[1]||'',
+        dias: r[2] ? r[2].split(',').map(Number) : [],
+        hora: r[3]||'',
+        duracion: Number(r[4])||60,
+        color: r[5]||'pink',
+        precio: Number(r[6])||0
+      });
+    }
   });
   return merged;
 }
@@ -3035,11 +3060,13 @@ async function syncGoogle(auto=false){
     await ensureSheets();
 
     // ── 1. LEER datos de Sheets (para hacer merge) ──
-    const [alumnosData, pagosData, unifData, asistData] = await Promise.all([
+    const [alumnosData, pagosData, unifData, asistData, configData, modData] = await Promise.all([
       readSheet('Alumnos'),
       readSheet('Pagos'),
       readSheet('Uniformes'),
-      readSheet('Asistencia')
+      readSheet('Asistencia'),
+      readSheet('Configuracion'),
+      readSheet('Modalidades')
     ]);
 
     // ── 2. MERGE: combinar datos locales con remotos ──
@@ -3048,16 +3075,22 @@ async function syncGoogle(auto=false){
     const mergedPagos = mergePagos(state.pagos, pagosData.slice(1), mergedAlumnos);
     const mergedUnif = mergeUniformes(state.uniformes, unifData.slice(1), mergedAlumnos);
     const mergedAsist = mergeAsistencia(state.asistencia || {}, asistData.slice(1), mergedAlumnos);
+    const mergedConfig = mergeConfig(state.config, configData.slice(1));
+    const mergedMod = mergeModalidades(state.modalidades, modData.slice(1));
 
     // ── 3. GUARDAR merge en state local ──
     state.alumnos = mergedAlumnos;
     state.pagos = mergedPagos;
     state.uniformes = mergedUnif;
     state.asistencia = mergedAsist;
+    state.config = mergedConfig;
+    state.modalidades = mergedMod;
     save('alumnos');
     save('pagos');
     save('uniformes');
     save('asistencia');
+    save('config');
+    save('modalidades');
 
     // ── 4. SUBIR merge a Sheets ──
     const alumnosRows = state.alumnos.map(a=>[
@@ -3093,6 +3126,14 @@ async function syncGoogle(auto=false){
       ['ID','Alumna','Piezas','Total','1er pago','Fecha 1er pago','2do pago','Fecha liquidación','Estado'],
       unifRows
     );
+
+    const configRows = Object.entries(state.config).map(([k, v]) => [k, v]);
+    await writeSheet('Configuracion', ['Clave', 'Valor'], configRows);
+
+    const modRows = state.modalidades.map(m=>[
+      m.id, m.nombre, m.dias?.join(','), m.hora, m.duracion, m.color, m.precio
+    ]);
+    await writeSheet('Modalidades', ['ID','Nombre','Días','Hora','Duración','Color','Precio'], modRows);
 
     const asistRows = [];
     Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
@@ -3143,9 +3184,9 @@ async function ensureSheets(){
   const sid = state.config.sheetsId;
   const info = await sheetsRequest('GET', '/'+sid+'?fields=sheets.properties.title');
   const existentes = (info.sheets||[]).map(s=>s.properties.title);
-  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia'];
+  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia', 'Configuracion', 'Modalidades'];
   const faltantes = necesarias.filter(n=>!existentes.includes(n));
-  
+
   if(faltantes.length){
     const requests = faltantes.map(title=>({ addSheet:{ properties:{ title } } }));
     await sheetsRequest('POST', '/'+sid+':batchUpdate', { requests });
@@ -3316,6 +3357,21 @@ function customConfirm(msg, onOk){
 }
 
 (function init(){
+  // Migración de precios globales a modalidades
+  if (state.config && state.config.precioMensual) {
+    const defaultPrice = state.config.precioMensual;
+    state.modalidades = state.modalidades.map(m => ({
+      ...m,
+      precio: m.precio || defaultPrice
+    }));
+    save('modalidades');
+    // Limpiar precios globales
+    delete state.config.precioClase;
+    delete state.config.precioMensual;
+    delete state.config.precioBimestral;
+    save('config');
+  }
+
   // Restaurar página guardada (si existe)
   const savedPage = DB.get('currentPage') || 'dashboard';
   showPage(savedPage, null);
@@ -3328,8 +3384,6 @@ function customConfirm(msg, onOk){
   actualizarSelectModalidad();
   const fechaAsist=document.getElementById('fecha-asistencia');
   if(fechaAsist) fechaAsist.addEventListener('change',()=>renderListaAsistencia());
-  const c=state.config;
-  if(c.precioMensual&&document.getElementById('cfg-precio-mensual')) document.getElementById('cfg-precio-mensual').value=c.precioMensual;
 })();
 </script>
 /
