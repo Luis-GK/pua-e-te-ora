@@ -2457,6 +2457,7 @@ function guardarConfig(){
     direccion:document.getElementById('cfg-direccion')?.value||''
   };
   save('config');
+  syncGoogle(true);
 }
 
 function renderListaPromociones(){
@@ -3029,12 +3030,26 @@ function mergeUniformes(local, remote, alumnosLocal){
   return merged;
 }
 
+function mergeAsistencia(local, remote, alumnosLocal){
+  const merged = { ...local };
+  remote.forEach(r => {
+    if(!r[0] || !r[1] || !r[3]) return;
+    const fecha = r[0];
+    const clase = r[1];
+    const alumnaId = r[3];
+    const status = r[4]||'ausente';
+    if(!merged[fecha]) merged[fecha] = {};
+    if(!merged[fecha][clase]) merged[fecha][clase] = {};
+    merged[fecha][clase][alumnaId] = status;
+  });
+  return merged;
+}
+
 function mergeConfig(local, remote){
   const merged = { ...local };
   remote.forEach(row => {
     if(!row[0]) return;
     const [key, value] = row;
-    // No sobreescribir IDs críticos si ya existen localmente
     if(['sheetsId', 'clientId'].includes(key) && local[key]) return;
     merged[key] = value;
   });
