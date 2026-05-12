@@ -2593,6 +2593,7 @@ function eliminarModalidad(id){
     state.modalidades=state.modalidades.filter(m=>m.id!==id);
     save('modalidades');
     renderModalidadesCfg(); renderHorario(); renderDashboard();
+    syncGoogle(true);
     toast('Modalidad eliminada');
   });
 }
