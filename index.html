@@ -1302,10 +1302,18 @@ textarea{resize:vertical;min-height:80px}
             </label>
           </div>
           <div class="form-group full">
-            <label>Precio de la modalidad ($)</label>
-            <input type="number" id="mod-precio" placeholder="Ej: 500">
-          </div>
+          <label>Precio Clase Suelta ($)</label>
+          <input type="number" id="mod-precioClase" placeholder="Ej: 150">
         </div>
+        <div class="form-group full">
+          <label>Precio Mensualidad ($)</label>
+          <input type="number" id="mod-precioMensual" placeholder="Ej: 600">
+        </div>
+        <div class="form-group full">
+          <label>Precio Pago Bimestral ($)</label>
+          <input type="number" id="mod-precioBimestral" placeholder="Ej: 1100">
+        </div>
+      </div>
 
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
@@ -2467,8 +2475,9 @@ function guardarPromo(){
   state.promociones.push({id:Date.now(),nombre,valor}); save('promociones');
   closeModal('modal-promo'); renderListaPromociones(); toast('Promoción agregada');
   document.getElementById('pr-nombre').value=''; document.getElementById('pr-valor').value='';
+  syncGoogle(true);
 }
-function eliminarPromo(id){ state.promociones=state.promociones.filter(p=>p.id!==id); save('promociones'); renderListaPromociones(); toast('Eliminada'); }
+function eliminarPromo(id){ state.promociones=state.promociones.filter(p=>p.id!==id); save('promociones'); renderListaPromociones(); toast('Eliminada'); syncGoogle(true); }
 
 // ══ MODALIDADES ══
 function renderModalidadesCfg(){
@@ -2509,7 +2518,9 @@ function editarModalidad(id){
   document.getElementById('mod-nombre').value=m.nombre||'';
   document.getElementById('mod-hora').value=m.hora||'17:00';
   document.getElementById('mod-duracion').value=m.duracion||60;
-  document.getElementById('mod-precio').value=m.precio||'';
+  document.getElementById('mod-precioClase').value=m.precioClase||'';
+  document.getElementById('mod-precioMensual').value=m.precioMensual||'';
+  document.getElementById('mod-precioBimestral').value=m.precioBimestral||'';
 
   // Marcar días
   document.querySelectorAll('#mod-dias-check input').forEach(c=>{
@@ -2541,8 +2552,10 @@ function guardarModalidad(){
   const color=colorSel?colorSel.value:'pink';
   const hora=document.getElementById('mod-hora').value||'17:00';
   const duracion=Number(document.getElementById('mod-duracion').value)||60;
-  const precio=Number(document.getElementById('mod-precio').value)||0;
-  const mod={id:state.editId||Date.now(),nombre,dias:diasCheck,hora,duracion,color,precio};
+  const precioClase=Number(document.getElementById('mod-precioClase').value)||0;
+  const precioMensual=Number(document.getElementById('mod-precioMensual').value)||0;
+  const precioBimestral=Number(document.getElementById('mod-precioBimestral').value)||0;
+  const mod={id:state.editId||Date.now(),nombre,dias:diasCheck,hora,duracion,color,precioClase,precioMensual,precioBimestral};
   if(state.editId){
     const i=state.modalidades.findIndex(m=>m.id===state.editId);
     state.modalidades[i]=mod;
@@ -2552,7 +2565,9 @@ function guardarModalidad(){
   save('modalidades');
   closeModal('modal-modalidad');
   document.getElementById('mod-nombre').value='';
-  document.getElementById('mod-precio').value='';
+  document.getElementById('mod-precioClase').value='';
+  document.getElementById('mod-precioMensual').value='';
+  document.getElementById('mod-precioBimestral').value='';
   state.editId=null;
   renderModalidadesCfg();
   renderHorario();
@@ -2598,22 +2613,20 @@ function onConceptoChange(){
   const alumnaId=document.getElementById('p-alumna').value;
   const alumna=state.alumnos.find(a=>a.id===alumnaId);
   const modSugerida=alumna?state.modalidades.find(m=>m.nombre===alumna.modalidad):null;
-  const precioMod=modSugerida?modSugerida.precio:0;
 
   if(concepto==='mensual'){
-    monto=precioMod||0;
-    label='Precio de la modalidad seleccionada';
+    monto=modSugerida ? modSugerida.precioMensual : 0;
+    label=modSugerida ? 'Precio Mensual de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
   else if(concepto==='bimestral'){
-    monto=precioMod*2||0;
-    label='Doble del precio de la modalidad';
+    monto=modSugerida ? modSugerida.precioBimestral : 0;
+    label=modSugerida ? 'Precio Bimestral de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
   else if(concepto==='clase'){
-    // Si no hay precio de clase específico en la modalidad, usamos un valor base o 0
-    monto=precioMod/4||0;
-    label='Precio estimado por clase (Mensual/4)';
+    monto=modSugerida ? modSugerida.precioClase : 0;
+    label=modSugerida ? 'Precio de Clase Suelta de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
   else{
@@ -3041,8 +3054,23 @@ function mergeModalidades(local, remote){
         hora: r[3]||'',
         duracion: Number(r[4])||60,
         color: r[5]||'pink',
-        precio: Number(r[6])||0
+        precioClase: Number(r[6])||0,
+        precioMensual: Number(r[7])||0,
+        precioBimestral: Number(r[8])||0
       });
+    }
+  });
+  return merged;
+}
+
+function mergePromociones(local, remote){
+  const merged = [...local];
+  remote.forEach(r => {
+    if(!r[0]) return;
+    const remoteId = Number(r[0]);
+    const remotePromo = { id: remoteId, nombre: r[1]||'', valor: r[2]||'' };
+    if(!local.find(p => p.id === remoteId)){
+      merged.push(remotePromo);
     }
   });
   return merged;
@@ -3131,9 +3159,9 @@ async function syncGoogle(auto=false){
     await writeSheet('Configuracion', ['Clave', 'Valor'], configRows);
 
     const modRows = state.modalidades.map(m=>[
-      m.id, m.nombre, m.dias?.join(','), m.hora, m.duracion, m.color, m.precio
+      m.id, m.nombre, m.dias?.join(','), m.hora, m.duracion, m.color, m.precioClase, m.precioMensual, m.precioBimestral
     ]);
-    await writeSheet('Modalidades', ['ID','Nombre','Días','Hora','Duración','Color','Precio'], modRows);
+    await writeSheet('Modalidades', ['ID','Nombre','Días','Hora','Duración','Color','precioClase','precioMensual','precioBimestral'], modRows);
 
     const asistRows = [];
     Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
