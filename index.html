@@ -3227,7 +3227,7 @@ async function ensureSheets(){
   const sid = state.config.sheetsId;
   const info = await sheetsRequest('GET', '/'+sid+'?fields=sheets.properties.title');
   const existentes = (info.sheets||[]).map(s=>s.properties.title);
-  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia', 'Configuracion', 'Modalidades'];
+  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia', 'Configuracion', 'Modalidades', 'Promociones'];
   const faltantes = necesarias.filter(n=>!existentes.includes(n));
 
   if(faltantes.length){
