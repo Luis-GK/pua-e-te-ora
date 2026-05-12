@@ -1392,7 +1392,9 @@ let state = {
   deletedAlumnos: DB.get('deletedAlumnos')||[],
   deletedPagos: DB.get('deletedPagos')||[],
   deletedUniformes: DB.get('deletedUniformes')||[],
-  deletedAsistencia: DB.get('deletedAsistencia')||[]
+  deletedAsistencia: DB.get('deletedAsistencia')||[],
+  deletedModalidades: DB.get('deletedModalidades')||[],
+  deletedPromociones: DB.get('deletedPromociones')||[]
 };
 let currentAlumnoId = null;
 let currentNotaFiltro = 'todas';
@@ -2478,7 +2480,12 @@ function guardarPromo(){
   document.getElementById('pr-nombre').value=''; document.getElementById('pr-valor').value='';
   syncGoogle(true);
 }
-function eliminarPromo(id){ state.promociones=state.promociones.filter(p=>p.id!==id); save('promociones'); renderListaPromociones(); toast('Eliminada'); syncGoogle(true); }
+function eliminarPromo(id){
+    state.promociones=state.promociones.filter(p=>p.id!==id);
+    state.deletedPromociones.push(id);
+    save('promociones'); save('deletedPromociones');
+    renderListaPromociones(); toast('Eliminada'); syncGoogle(true);
+}
 
 // ══ MODALIDADES ══
 function renderModalidadesCfg(){
@@ -2591,7 +2598,8 @@ document.addEventListener('change', function(e){
 function eliminarModalidad(id){
   customConfirm('¿Eliminar esta modalidad?', ()=>{
     state.modalidades=state.modalidades.filter(m=>m.id!==id);
-    save('modalidades');
+    state.deletedModalidades.push(id);
+    save('modalidades'); save('deletedModalidades');
     renderModalidadesCfg(); renderHorario(); renderDashboard();
     syncGoogle(true);
     toast('Modalidad eliminada');
@@ -3063,7 +3071,7 @@ function mergeModalidades(local, remote){
   remote.forEach(r => {
     if(!r[0]) return;
     const remoteId = Number(r[0]);
-    if(!local.find(m => m.id === remoteId)){
+    if(!local.find(m => m.id === remoteId) && !state.deletedModalidades.includes(remoteId)){
       merged.push({
         id: remoteId,
         nombre: r[1]||'',
@@ -3086,7 +3094,7 @@ function mergePromociones(local, remote){
     if(!r[0]) return;
     const remoteId = Number(r[0]);
     const remotePromo = { id: remoteId, nombre: r[1]||'', valor: r[2]||'' };
-    if(!local.find(p => p.id === remoteId)){
+    if(!local.find(p => p.id === remoteId) && !state.deletedPromociones.includes(remoteId)){
       merged.push(remotePromo);
     }
   });
