@@ -3104,23 +3104,24 @@ async function syncGoogle(auto=false){
     await ensureSheets();
 
     // ── 1. LEER datos de Sheets (para hacer merge) ──
-    const [alumnosData, pagosData, unifData, asistData, configData, modData] = await Promise.all([
+    const [alumnosData, pagosData, unifData, asistData, configData, modData, promoData] = await Promise.all([
       readSheet('Alumnos'),
       readSheet('Pagos'),
       readSheet('Uniformes'),
       readSheet('Asistencia'),
       readSheet('Configuracion'),
-      readSheet('Modalidades')
+      readSheet('Modalidades'),
+      readSheet('Promociones')
     ]);
 
     // ── 2. MERGE: combinar datos locales con remotos ──
-    // Para alumnos y pagos, usar el más reciente (basado en ID que es Date.now())
     const mergedAlumnos = mergeAlumnos(state.alumnos, alumnosData.slice(1));
     const mergedPagos = mergePagos(state.pagos, pagosData.slice(1), mergedAlumnos);
     const mergedUnif = mergeUniformes(state.uniformes, unifData.slice(1), mergedAlumnos);
     const mergedAsist = mergeAsistencia(state.asistencia || {}, asistData.slice(1), mergedAlumnos);
     const mergedConfig = mergeConfig(state.config, configData.slice(1));
     const mergedMod = mergeModalidades(state.modalidades, modData.slice(1));
+    const mergedPromo = mergePromociones(state.promociones, promoData.slice(1));
 
     // ── 3. GUARDAR merge en state local ──
     state.alumnos = mergedAlumnos;
@@ -3129,12 +3130,14 @@ async function syncGoogle(auto=false){
     state.asistencia = mergedAsist;
     state.config = mergedConfig;
     state.modalidades = mergedMod;
+    state.promociones = mergedPromo;
     save('alumnos');
     save('pagos');
     save('uniformes');
     save('asistencia');
     save('config');
     save('modalidades');
+    save('promociones');
 
     // ── 4. SUBIR merge a Sheets ──
     const alumnosRows = state.alumnos.map(a=>[
@@ -3178,6 +3181,9 @@ async function syncGoogle(auto=false){
       m.id, m.nombre, m.dias?.join(','), m.hora, m.duracion, m.color, m.precioClase, m.precioMensual, m.precioBimestral
     ]);
     await writeSheet('Modalidades', ['ID','Nombre','Días','Hora','Duración','Color','precioClase','precioMensual','precioBimestral'], modRows);
+
+    const promoRows = state.promociones.map(p=>[p.id, p.nombre, p.valor]);
+    await writeSheet('Promociones', ['ID','Nombre','Valor'], promoRows);
 
     const asistRows = [];
     Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
