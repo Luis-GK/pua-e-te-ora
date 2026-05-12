@@ -2573,6 +2573,7 @@ function guardarModalidad(){
   renderModalidadesCfg();
   renderHorario();
   actualizarSelectModalidad();
+  syncGoogle(true);
   toast(state.editId?'Modalidad actualizada':'Modalidad agregada');
 }
 
