@@ -1,0 +1,20 @@
+{
+  "name": "Pua E Te Ora — Escuela de Danza",
+  "short_name": "Pua E Te Ora",
+  "description": "Sistema de gestión de la escuela de danza Pua E Te Ora: alumnas, pagos, asistencia, horarios, uniformes y notas.",
+  "lang": "es-MX",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#faf8f6",
+  "theme_color": "#e91e8c",
+  "icons": [
+    {
+      "src": "logo.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

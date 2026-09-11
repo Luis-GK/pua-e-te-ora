@@ -7,6 +7,8 @@
 <meta name="description" content="Sistema de gestión Pua E Te Ora Escuela de Danza">
 <meta name="theme-color" content="#e91e8c">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="logo.jpg">
+<link rel="apple-touch-icon" href="logo.jpg">
 <!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <!-- Google API Client -->
@@ -633,6 +635,11 @@ textarea{resize:vertical;min-height:80px}
           </div>
           <button class="btn btn-primary btn-sm" onclick="limpiarFormAlumno();openModal('modal-alumno')">+ Agregar</button>
         </div>
+      </div>
+      <div class="tabs" id="filtro-alumnos-tabs" style="margin-bottom:14px">
+        <button class="tab active" data-filtro="activas" data-etiqueta="Activas" onclick="filtrarEstadoAlumnos('activas',this)">Activas</button>
+        <button class="tab" data-filtro="inactivas" data-etiqueta="Bajas e inactivas" onclick="filtrarEstadoAlumnos('inactivas',this)">Bajas e inactivas</button>
+        <button class="tab" data-filtro="todas" data-etiqueta="Todas" onclick="filtrarEstadoAlumnos('todas',this)">Todas</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -1402,6 +1409,48 @@ let currentNotaFiltro = 'todas';
 function save(key){ DB.set(key, state[key]) }
 function saveDeleted(key){ DB.set(key, state[key]) }
 
+// ══ NOMBRES HISTÓRICOS ══
+// Los pagos y los uniformes son registros contables: deben seguir siendo legibles
+// aunque la alumna se elimine. Por eso cada registro guarda su propio
+// `alumnaNombre` y aquí se resuelve con ese respaldo.
+function nombreAlumna(alumnaId, nombreGuardado){
+  const a=state.alumnos.find(x=>x.id==alumnaId);
+  return (a&&a.nombre) || nombreGuardado || '—';
+}
+
+// Rellena el nombre (y la clase) en los registros antiguos que no lo tengan guardado.
+function rellenarNombresHistoricos(){
+  let cambios=false;
+  state.pagos.forEach(p=>{
+    if(!p.alumnaNombre){
+      const a=state.alumnos.find(x=>x.id==p.alumnaId);
+      if(a&&a.nombre){ p.alumnaNombre=a.nombre; cambios=true; }
+    }
+  });
+  state.uniformes.forEach(u=>{
+    if(!u.alumnaNombre){
+      const a=state.alumnos.find(x=>x.id==u.alumnaId);
+      if(a&&a.nombre){ u.alumnaNombre=a.nombre; cambios=true; }
+    }
+  });
+  // Asistencia: el mismo criterio. El nombre y el nombre de la clase quedan
+  // dentro de cada registro, para que el historial siga siendo legible.
+  const asistEraArray=Array.isArray(state.asistencia);
+  state.asistencia=normalizarAsistencia(state.asistencia);
+  if(!asistEraArray) cambios=true;
+  state.asistencia.forEach(r=>{
+    const a=state.alumnos.find(x=>x.id==r.alumnaId);
+    if(!a) return;
+    if(!r.alumnaNombre && a.nombre){ r.alumnaNombre=a.nombre; cambios=true; }
+    if(!r.clase){
+      const c=claseDeAsistencia(r.fecha,r.alumnaId);
+      if(c){ r.clase=c; cambios=true; }
+    }
+  });
+  if(cambios){ save('pagos'); save('uniformes'); save('asistencia'); }
+  return cambios;
+}
+
 // ══ UI NAVIGATION ══
 function showPage(page, btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1430,7 +1479,10 @@ function showPage(page, btn){
   if(page==='notas') renderNotas();
   if(page==='horarios') renderHorario();
   if(page==='configuracion') cargarConfig();
-  if(window.innerWidth<768) toggleSidebar();
+  // En móvil, navegar debe CERRAR el cajón lateral, nunca abrirlo.
+  // Antes se llamaba toggleSidebar(): como el cajón empieza cerrado, el toggle
+  // lo ABRÍA. Por eso "Ver alumnos" del dashboard desplegaba el panel lateral.
+  if(window.innerWidth<768) cerrarSidebar();
 }
 
 function switchTab(id, group){
@@ -1449,6 +1501,15 @@ function switchTab(id, group){
 function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+
+// Cierra el cajón lateral sin alternarlo. Se usa al navegar: si el cajón ya
+// estaba cerrado, no debe abrirse.
+function cerrarSidebar(){
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebar-overlay');
+  if(sb) sb.classList.remove('open');
+  if(ov) ov.classList.remove('open');
 }
 
 // ══ MODAL ══
@@ -1628,15 +1689,51 @@ function calIrHoy(){
 
 // ══ ALUMNOS ══
 let filtroAlumnos = '';
+// Apartado visible de la lista: 'activas' | 'inactivas' | 'todas'
+let filtroEstadoAlumnos = 'activas';
 // Estado del mini-calendario
 let calMes = new Date().getMonth();
 let calAnio = new Date().getFullYear();
 function filtrarAlumnos(){ filtroAlumnos=document.getElementById('search-alumnos').value.toLowerCase(); renderAlumnos(); }
 
+// Cambia de apartado (Activas / Bajas e inactivas / Todas)
+function filtrarEstadoAlumnos(filtro, btn){
+  filtroEstadoAlumnos=filtro;
+  const cont=document.getElementById('filtro-alumnos-tabs');
+  if(cont) cont.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.filtro===filtro));
+  renderAlumnos();
+}
+
+// Pinta los contadores en las pestañas
+function actualizarContadoresAlumnos(nActivas,nInactivas){
+  const cont=document.getElementById('filtro-alumnos-tabs'); if(!cont) return;
+  const totales={activas:nActivas,inactivas:nInactivas,todas:nActivas+nInactivas};
+  cont.querySelectorAll('.tab').forEach(t=>{
+    const f=t.dataset.filtro;
+    if(!(f in totales)) return;
+    const etiqueta=t.dataset.etiqueta||t.textContent.replace(/\s*\(\d+\)$/,'');
+    t.dataset.etiqueta=etiqueta;
+    t.textContent=etiqueta+' ('+totales[f]+')';
+  });
+}
+
 function renderAlumnos(){
   const tbody=document.getElementById('tabla-alumnos');
-  const lista=state.alumnos.filter(a=>!filtroAlumnos||a.nombre.toLowerCase().includes(filtroAlumnos));
-  if(!lista.length){ tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">👩‍🎓</div><p>No hay alumnas registradas aún</p></div></td></tr>'; return; }
+  const activas=state.alumnos.filter(a=>a.estado==='activa');
+  const inactivas=state.alumnos.filter(a=>a.estado!=='activa');
+  actualizarContadoresAlumnos(activas.length,inactivas.length);
+  let lista=filtroEstadoAlumnos==='activas'?activas:filtroEstadoAlumnos==='inactivas'?inactivas:state.alumnos;
+  lista=lista.filter(a=>!filtroAlumnos||a.nombre.toLowerCase().includes(filtroAlumnos));
+  if(!lista.length){
+    const vacio={
+      activas:['👩‍🎓','No hay alumnas activas'],
+      inactivas:['🌙','No hay alumnas dadas de baja ni inactivas'],
+      todas:['👩‍🎓','No hay alumnas registradas aún']
+    }[filtroEstadoAlumnos]||['👩‍🎓','Sin resultados'];
+    const msg=filtroAlumnos?['🔍','Ninguna alumna coincide con la búsqueda']:vacio;
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">'+msg[0]+'</div><p>'+msg[1]+'</p></div></td></tr>';
+    return;
+  }
   const now=new Date(); const mes=now.getMonth(); const anio=now.getFullYear();
   tbody.innerHTML='';
   lista.forEach(a=>{
@@ -1670,11 +1767,20 @@ function renderAlumnos(){
     btnEdit.onclick=()=>editarAlumno(a.id);
     const btnPago=document.createElement('button');
     btnPago.className='btn btn-success btn-sm'; btnPago.textContent='💳';
+    btnPago.title='Registrar pago';
     btnPago.onclick=()=>pagoRapido(a.id);
+    // Dar de baja / reactivar: conserva el historial, a diferencia de eliminar
+    const esActiva=a.estado==='activa';
+    const btnEstado=document.createElement('button');
+    btnEstado.className='btn btn-outline btn-sm';
+    btnEstado.textContent=esActiva?'⏸':'▶';
+    btnEstado.title=esActiva?'Dar de baja (conserva su historial)':'Reactivar alumna';
+    btnEstado.onclick=()=>cambiarEstadoAlumno(a.id, esActiva?'baja':'activa');
     const btnDel=document.createElement('button');
     btnDel.className='btn btn-danger btn-sm'; btnDel.textContent='🗑️';
+    btnDel.title='Eliminar definitivamente';
     btnDel.onclick=()=>eliminarAlumno(a.id);
-    tdAcc.append(btnEdit,btnPago,btnDel);
+    tdAcc.append(btnEdit,btnPago,btnEstado,btnDel);
     tbody.appendChild(tr);
   });
 }
@@ -1744,8 +1850,26 @@ function limpiarFormAlumno(){
 }
 
 
+// Da de baja o reactiva una alumna. Conserva intacto todo su historial.
+function cambiarEstadoAlumno(id, nuevoEstado){
+  const a=state.alumnos.find(x=>x.id===id); if(!a) return;
+  a.estado=nuevoEstado;
+  save('alumnos');
+  renderAlumnos(); renderDashboard();
+  toast(nuevoEstado==='activa'?('Alumna reactivada: '+a.nombre):('Alumna dada de baja: '+a.nombre));
+  syncGoogle(true);
+}
+
 function eliminarAlumno(id){
-  customConfirm('¿Eliminar esta alumna?', ()=>{
+  const a=state.alumnos.find(x=>x.id===id); if(!a) return;
+  const nPagos=state.pagos.filter(p=>p.alumnaId===id).length;
+  const nUnif=state.uniformes.filter(u=>u.alumnaId===id).length;
+  const historial=nPagos+nUnif;
+  // Aviso antes de borrar algo con historial: casi siempre conviene dar de baja
+  const msg = historial
+    ? '¿Eliminar a '+a.nombre+' definitivamente? Tiene '+nPagos+' pago(s) y '+nUnif+' uniforme(s) registrados. Esos registros conservarán su nombre. Si solo dejó de asistir, es mejor darla de BAJA: así puedes reactivarla y no pierdes nada.'
+    : '¿Eliminar a '+a.nombre+'?';
+  customConfirm(msg, ()=>{
     // Registrar eliminación para sync con Sheets
     if(!state.deletedAlumnos.includes(id)){
       state.deletedAlumnos.push(id);
@@ -1829,6 +1953,9 @@ function guardarPago(){
   const montoFinal=Number(document.getElementById('p-monto-pagado').value)||montoNormal;
   const pago={
     id:Date.now(), alumnaId:Number(alumnaId),
+    // El nombre se guarda dentro del registro: si la alumna se elimina después,
+    // el pago sigue siendo legible (es un registro contable).
+    alumnaNombre:(state.alumnos.find(x=>x.id==alumnaId)||{}).nombre||'',
     concepto:conceptoVal, conceptoLabel,
     periodo:document.getElementById('p-periodo').value,
     montoNormal, promoNombre, promoValor,
@@ -1869,10 +1996,9 @@ function renderPagosMes(){
   } else {
     tbody.innerHTML='';
     pagosMes.forEach(p=>{
-      const a=state.alumnos.find(x=>x.id==p.alumnaId);
       const tr=document.createElement('tr');
       tr.innerHTML=
-        '<td><strong>'+(a?a.nombre:'—')+'</strong></td>'+
+        '<td><strong>'+nombreAlumna(p.alumnaId,p.alumnaNombre)+'</strong></td>'+
         '<td><span class="badge badge-blue">'+(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
         '<td style="font-size:12px;color:var(--gray-600)">'+getPeriodoLabel(p)+'</td>'+
         '<td><strong>$'+Number(p.montoPagado).toLocaleString('es-MX')+'</strong></td>'+
@@ -1922,10 +2048,9 @@ function renderHistorialPagos(){
   if(!todos.length){ tbody.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📋</div><p>Sin pagos registrados</p></div></td></tr>'; return; }
   tbody.innerHTML='';
   todos.forEach(p=>{
-    const a=state.alumnos.find(x=>x.id==p.alumnaId);
     const tr=document.createElement('tr');
     tr.innerHTML=
-      '<td>'+(a?a.nombre:'—')+'</td>'+
+      '<td>'+nombreAlumna(p.alumnaId,p.alumnaNombre)+'</td>'+
       '<td><span class="badge badge-blue">'+(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
       '<td style="font-size:12px;color:var(--gray-600)">'+getPeriodoLabel(p)+'</td>'+
       '<td><strong>$'+Number(p.montoPagado).toLocaleString('es-MX')+'</strong></td>'+
@@ -1955,8 +2080,7 @@ function renderHistorialPagos(){
   const todos=[...state.pagos].reverse();
   if(!todos.length){ tbody.innerHTML=`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📋</div><p>Sin pagos registrados</p></div></td></tr>`; return; }
   tbody.innerHTML=todos.map(p=>{
-    const a=state.alumnos.find(x=>x.id==p.alumnaId);
-    return `<tr><td>${a?a.nombre:'—'}</td><td>${p.concepto||'—'} · ${p.periodo||''}</td><td><strong>$${Number(p.montoPagado).toLocaleString('es-MX')}</strong></td><td>${p.fecha||'—'}</td><td>${p.metodo||'—'}</td><td>${p.notas||'—'}</td></tr>`;
+    return `<tr><td>${nombreAlumna(p.alumnaId,p.alumnaNombre)}</td><td>${p.concepto||'—'} · ${p.periodo||''}</td><td><strong>$${Number(p.montoPagado).toLocaleString('es-MX')}</strong></td><td>${p.fecha||'—'}</td><td>${p.metodo||'—'}</td><td>${p.notas||'—'}</td></tr>`;
   }).join('');
 }
 
@@ -1999,6 +2123,8 @@ function guardarUniforme(){
   const pago2=Number(document.getElementById('u-pago2').value)||0;
   const estado=pago1+pago2>=total?'liquidado':pago1>0?'parcial':'pendiente';
   const unif={ id:Date.now(), alumnaId:Number(alumnaId), piezas, total,
+    // Igual que en los pagos: el nombre viaja con el registro
+    alumnaNombre:(state.alumnos.find(x=>x.id==alumnaId)||{}).nombre||'',
     pago1, fecha1:document.getElementById('u-fecha1').value,
     pago2, fechaLiq:document.getElementById('u-fecha-liq').value, estado };
   if(state.editId){
@@ -2018,11 +2144,10 @@ function renderUniformes(){
   if(!state.uniformes.length){ tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">👗</div><p>Sin uniformes registrados</p></div></td></tr>'; return; }
   tbody.innerHTML='';
   state.uniformes.forEach(u=>{
-    const a=state.alumnos.find(x=>x.id==u.alumnaId);
     const badgeClass={liquidado:'badge-green',parcial:'badge-yellow',pendiente:'badge-red'}[u.estado]||'badge-gray';
     const tr=document.createElement('tr');
     tr.innerHTML=
-      '<td><strong>'+(a?a.nombre:'—')+'</strong></td>'+
+      '<td><strong>'+nombreAlumna(u.alumnaId,u.alumnaNombre)+'</strong></td>'+
       '<td style="font-size:12px">'+(u.piezas?.map(p=>p.nombre).join(', ')||'—')+'</td>'+
       '<td><strong>$'+Number(u.total||0).toLocaleString('es-MX')+'</strong></td>'+
       '<td>'+(u.pago1?'$'+Number(u.pago1).toLocaleString('es-MX'):'—')+'</td>'+
@@ -2133,6 +2258,79 @@ function guardarPieza(){
 function eliminarPieza(id){ customConfirm('¿Eliminar esta pieza?', ()=>{ state.piezas=state.piezas.filter(p=>p.id!==id); save('piezas'); renderPiezas(); toast('Pieza eliminada'); }); }
 
 // ══ ASISTENCIA ══
+// ── Modelo único de asistencia: ARRAY de {id, alumnaId, fecha, estado} ──
+// La app siempre trabajó con array, pero mergeAsistencia() devolvía un objeto y
+// syncGoogle() lo guardaba en state, corrompiendo el dato de forma permanente.
+// Estas funciones normalizan cualquier formato previo y evitan la regresión.
+//
+// Estados válidos en la UI: 'presente' | 'falta' | 'justificada'
+// El formato histórico usaba 'ausente', que aquí se traduce a 'falta'.
+const ASISTENCIA_ESTADOS = { presente:'presente', falta:'falta', justificada:'justificada', ausente:'falta' };
+
+function normalizarEstadoAsistencia(v){
+  const k=String(v==null?'':v).trim().toLowerCase();
+  return ASISTENCIA_ESTADOS[k]||'falta';
+}
+
+function esFechaISO(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s==null?'':s)); }
+
+// Convierte cualquier formato previo a array de {id, alumnaId, fecha, estado}.
+//   A) array actual ............: [{id,alumnaId,fecha,estado}]
+//   B) objeto anidado legado ...: {'YYYY-MM-DD':{'Clase':{alumnaId:'presente'}}}
+//   C) objeto corrupto por sync : {0:{alumnaId,fecha,estado}, 1:{...}}
+function normalizarAsistencia(raw){
+  if(Array.isArray(raw)){
+    return raw
+      .filter(r=>r && r.alumnaId && esFechaISO(r.fecha))
+      .map((r,i)=>Object.assign(
+        { id:r.id||(Date.now()+i), alumnaId:Number(r.alumnaId), fecha:r.fecha, estado:normalizarEstadoAsistencia(r.estado) },
+        r.alumnaNombre?{alumnaNombre:r.alumnaNombre}:{},   // se conserva si ya venía guardado
+        r.clase?{clase:r.clase}:{}
+      ));
+  }
+  const out=[];
+  Object.entries(raw||{}).forEach(([clave, valor])=>{
+    if(!valor || typeof valor!=='object') return;
+    // Caso C: el valor ya es un registro completo
+    if(valor.alumnaId && esFechaISO(valor.fecha)){
+      out.push(Object.assign(
+        { id:valor.id||(Date.now()+out.length), alumnaId:Number(valor.alumnaId), fecha:valor.fecha, estado:normalizarEstadoAsistencia(valor.estado) },
+        valor.alumnaNombre?{alumnaNombre:valor.alumnaNombre}:{},
+        valor.clase?{clase:valor.clase}:{}
+      ));
+      return;
+    }
+    // Caso B: la clave es la fecha y el valor es {clase:{alumnaId:estado}}
+    if(!esFechaISO(clave)) return;
+    Object.values(valor).forEach(alumnasObj=>{
+      if(!alumnasObj || typeof alumnasObj!=='object') return;
+      Object.entries(alumnasObj).forEach(([alumnaId, estado])=>{
+        const aid=Number(alumnaId);
+        if(!aid) return;
+        out.push({ id:Date.now()+out.length, alumnaId:aid, fecha:clave, estado:normalizarEstadoAsistencia(estado) });
+      });
+    });
+  });
+  return out;
+}
+
+// Devuelve SIEMPRE el array normalizado, reparando state si hiciera falta
+function asistenciaActual(){
+  if(!Array.isArray(state.asistencia)) state.asistencia=normalizarAsistencia(state.asistencia);
+  return state.asistencia;
+}
+
+// Nombre de la clase que le toca a una alumna en una fecha (para la hoja de Sheets).
+// Si la alumna ya no existe, se usa la clase que quedó guardada en el registro.
+function claseDeAsistencia(fecha, alumnaId, claseGuardada){
+  const a=state.alumnos.find(x=>x.id==alumnaId);
+  if(!a || !a.modalidad) return claseGuardada||'';
+  const d=new Date(fecha+'T12:00:00'); // mediodía: evita desfases por zona horaria
+  if(isNaN(d.getTime())) return a.modalidad;
+  const m=(state.modalidades||[]).find(m=>m.nombre===a.modalidad && (m.dias||[]).includes(d.getDay()));
+  return m?m.nombre:(claseGuardada||a.modalidad);
+}
+
 function renderListaAsistencia(){
   const el=document.getElementById('lista-asistencia'); if(!el) return;
   const fechaEl=document.getElementById('fecha-asistencia');
@@ -2142,8 +2340,9 @@ function renderListaAsistencia(){
   const alumnos=state.alumnos.filter(a=>a.estado==='activa');
   if(!alumnos.length){ el.innerHTML='<div class="empty-state"><div class="empty-icon">👩‍🎓</div><p>No hay alumnas activas</p></div>'; return; }
   el.innerHTML='';
+  const asist=asistenciaActual(); // normaliza y repara si el dato venía corrupto
   alumnos.forEach(a=>{
-    const reg=state.asistencia.find(x=>x.alumnaId==a.id&&x.fecha===fecha);
+    const reg=asist.find(x=>x.alumnaId==a.id&&x.fecha===fecha);
     const est=reg?reg.estado:'';
     const row=document.createElement('div');
     row.className='asist-row';
@@ -2167,9 +2366,17 @@ function renderListaAsistencia(){
 
 function setAsistencia(alumnaId, estado, btn, fechaParam){
   const fecha=fechaParam||document.getElementById('fecha-asistencia').value||new Date().toISOString().split('T')[0];
-  const idx=state.asistencia.findIndex(x=>x.alumnaId==alumnaId&&x.fecha===fecha);
-  if(idx>=0) state.asistencia[idx].estado=estado;
-  else state.asistencia.push({id:Date.now(),alumnaId,fecha,estado});
+  const asist=asistenciaActual(); // nunca asumir que state.asistencia es un array
+  // El nombre y la clase se guardan dentro del registro: el historial de
+  // asistencia debe seguir siendo legible aunque la alumna se elimine.
+  const alumna=state.alumnos.find(x=>x.id==alumnaId);
+  const extras={
+    alumnaNombre:(alumna&&alumna.nombre)||'',
+    clase:claseDeAsistencia(fecha,alumnaId)
+  };
+  const idx=asist.findIndex(x=>x.alumnaId==alumnaId&&x.fecha===fecha);
+  if(idx>=0) Object.assign(asist[idx],{estado:normalizarEstadoAsistencia(estado)},extras);
+  else asist.push(Object.assign({id:Date.now(),alumnaId,fecha,estado:normalizarEstadoAsistencia(estado)},extras));
   save('asistencia');
   const row=btn.closest('.asist-row');
   row.querySelectorAll('.asist-btn').forEach(b=>b.classList.remove('active'));
@@ -2182,7 +2389,7 @@ function renderHistAsistencia(){
   const tbody=document.getElementById('tabla-asistencia-hist'); if(!tbody) return;
   if(!state.alumnos.length){ tbody.innerHTML=`<tr><td colspan="6"><div class="empty-state"><p>Sin datos</p></div></td></tr>`; return; }
   tbody.innerHTML=state.alumnos.map(a=>{
-    const reg=state.asistencia.filter(x=>x.alumnaId==a.id);
+    const reg=asistenciaActual().filter(x=>x.alumnaId==a.id);
     const total=reg.length; const pres=reg.filter(x=>x.estado==='presente').length;
     const faltas=reg.filter(x=>x.estado==='falta').length;
     const just=reg.filter(x=>x.estado==='justificada').length;
@@ -3040,17 +3247,19 @@ function mergeUniformes(local, remote, alumnosLocal){
   return merged;
 }
 
+// Devuelve SIEMPRE un array (antes devolvía {...local}, que corrompía state.asistencia
+// al guardarlo syncGoogle y dejaba la página de Asistencia inutilizable).
 function mergeAsistencia(local, remote, alumnosLocal){
-  const merged = { ...local };
-  remote.forEach(r => {
-    if(!r[0] || !r[1] || !r[3]) return;
+  const merged = normalizarAsistencia(local);
+  (remote||[]).forEach(r => {
+    if(!r || !r[0] || !r[3]) return;          // sin fecha o sin alumna no hay nada que mezclar
     const fecha = r[0];
-    const clase = r[1];
-    const alumnaId = r[3];
-    const status = r[4]||'ausente';
-    if(!merged[fecha]) merged[fecha] = {};
-    if(!merged[fecha][clase]) merged[fecha][clase] = {};
-    merged[fecha][clase][alumnaId] = status;
+    const alumnaId = Number(r[3]);
+    if(!esFechaISO(fecha) || !alumnaId) return;
+    const estado = normalizarEstadoAsistencia(r[4]);
+    const idx = merged.findIndex(x=>Number(x.alumnaId)===alumnaId && x.fecha===fecha);
+    if(idx>=0) merged[idx].estado = estado;
+    else merged.push({ id: Date.now()+merged.length, alumnaId, fecha, estado });
   });
   return merged;
 }
@@ -3127,7 +3336,7 @@ async function syncGoogle(auto=false){
     const mergedAlumnos = mergeAlumnos(state.alumnos, alumnosData.slice(1));
     const mergedPagos = mergePagos(state.pagos, pagosData.slice(1), mergedAlumnos);
     const mergedUnif = mergeUniformes(state.uniformes, unifData.slice(1), mergedAlumnos);
-    const mergedAsist = mergeAsistencia(state.asistencia || {}, asistData.slice(1), mergedAlumnos);
+    const mergedAsist = mergeAsistencia(state.asistencia, asistData.slice(1), mergedAlumnos);
     const mergedConfig = mergeConfig(state.config, configData.slice(1));
     const mergedMod = mergeModalidades(state.modalidades, modData.slice(1));
     const mergedPromo = mergePromociones(state.promociones, promoData.slice(1));
@@ -3159,9 +3368,8 @@ async function syncGoogle(auto=false){
     );
 
     const pagosRows = state.pagos.map(p=>{
-      const a = state.alumnos.find(x=>x.id==p.alumnaId);
       return [
-        p.id, a?a.nombre:'—', p.conceptoLabel||p.concepto||'',
+        p.id, nombreAlumna(p.alumnaId,p.alumnaNombre), p.conceptoLabel||p.concepto||'',
         p.periodo||'', p.montoPagado||0, p.promoNombre||'',
         p.fecha||'', p.metodo||'', p.notas||''
       ];
@@ -3172,9 +3380,8 @@ async function syncGoogle(auto=false){
     );
 
     const unifRows = state.uniformes.map(u=>{
-      const a = state.alumnos.find(x=>x.id==u.alumnaId);
       return [
-        u.id, a?a.nombre:'—', u.piezas?.map(p=>p.nombre).join(', ')||'',
+        u.id, nombreAlumna(u.alumnaId,u.alumnaNombre), u.piezas?.map(p=>p.nombre).join(', ')||'',
         u.total||0, u.pago1||0, u.fecha1||'', u.pago2||0, u.fechaLiq||'', u.estado||''
       ];
     });
@@ -3194,14 +3401,16 @@ async function syncGoogle(auto=false){
     const promoRows = state.promociones.map(p=>[p.id, p.nombre, p.valor]);
     await writeSheet('Promociones', ['ID','Nombre','Valor'], promoRows);
 
-    const asistRows = [];
-    Object.entries(state.asistencia||{}).forEach(([fecha, clases])=>{
-      Object.entries(clases||{}).forEach(([clase, alumnasObj])=>{
-        Object.entries(alumnasObj||{}).forEach(([alumnaId, status])=>{
-          const a = state.alumnos.find(x=>x.id==alumnaId);
-          asistRows.push([fecha, clase, a?a.nombre:'—', alumnaId, status]);
-        });
-      });
+    // La asistencia se exporta desde el array normalizado (antes se recorría como
+    // objeto anidado, lo que producía filas basura como ["0","fecha",...]).
+    const asistRows = asistenciaActual().map(r=>{
+      return [
+        r.fecha,
+        claseDeAsistencia(r.fecha, r.alumnaId, r.clase),
+        nombreAlumna(r.alumnaId, r.alumnaNombre),
+        r.alumnaId,
+        r.estado
+      ];
     });
     await writeSheet('Asistencia',
       ['Fecha','Clase','Alumna','AlumnaID','Status'],
@@ -3416,6 +3625,27 @@ function customConfirm(msg, onOk){
 }
 
 (function init(){
+  // ── Migración v1.2.0: guardar el nombre de la alumna dentro de pagos y uniformes ──
+  // Así esos registros siguen siendo legibles aunque la alumna se elimine después.
+  // (No puede recuperar el nombre de alumnas ya borradas antes de esta versión:
+  //  en esos casos el registro quedará con '—'.)
+  rellenarNombresHistoricos();
+
+  // ── Migración de asistencia al modelo de array (v1.1.0) ──
+  // Repara datos ya corruptos por el sync anterior (objeto en vez de array) y
+  // traduce el estado histórico 'ausente' a 'falta'.
+  (function migrarAsistencia(){
+    const previa = state.asistencia;
+    const normalizada = normalizarAsistencia(previa);
+    const necesitaGuardar = !Array.isArray(previa)
+      || normalizada.length !== previa.length
+      || normalizada.some((r,i)=>r.estado !== previa[i].estado);
+    if(necesitaGuardar){
+      state.asistencia = normalizada;
+      save('asistencia');
+    }
+  })();
+
   // Migración de precios globales a modalidades
   if (state.config && state.config.precioMensual) {
     const defaultPrice = state.config.precioMensual;
