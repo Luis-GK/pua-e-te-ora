@@ -667,10 +667,9 @@ textarea{resize:vertical;min-height:80px}
         <span class="card-title">Tomar asistencia</span>
         <div style="display:flex;gap:8px;align-items:center">
           <input type="date" id="fecha-asistencia" style="padding:7px 10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-body)">
-          <select id="clase-asistencia" style="padding:7px 10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-body)">
-            <option>Hawaiano — Lunes 17:00</option>
-            <option>Tahitiano — Miércoles 18:00</option>
-            <option>Contemporáneo — Viernes 17:00</option>
+          <select id="clase-asistencia" onchange="cambiarClaseAsistencia(this.value)" style="padding:7px 10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-body)">
+            <!-- Las opciones se generan desde Configuración → Modalidades (ver poblarSelectClaseAsistencia) -->
+            <option value="">Todas las clases</option>
           </select>
           <button class="btn btn-primary btn-sm" onclick="guardarAsistencia()">💾 Guardar</button>
         </div>
@@ -893,7 +892,7 @@ textarea{resize:vertical;min-height:80px}
       <div class="card">
         <div class="card-header">
           <span class="card-title">Modalidades de clase</span>
-          <button class="btn btn-primary btn-sm" onclick="openModal('modal-modalidad')">+ Agregar</button>
+          <button class="btn btn-primary btn-sm" onclick="prepararModalidadNueva()">+ Agregar</button>
         </div>
         <div id="lista-modalidades-cfg"></div>
       </div>
@@ -1059,12 +1058,8 @@ textarea{resize:vertical;min-height:80px}
         <div class="form-group">
           <label>Período</label>
           <select id="p-periodo">
-            <option>Enero 2025</option><option>Febrero 2025</option>
-            <option>Marzo 2025</option><option>Abril 2025</option>
-            <option>Mayo 2025</option><option>Junio 2025</option>
-            <option>Julio 2025</option><option>Agosto 2025</option>
-            <option>Septiembre 2025</option><option>Octubre 2025</option>
-            <option>Noviembre 2025</option><option>Diciembre 2025</option>
+            <!-- Los meses y años se generan dinámicamente (ver poblarSelectPeriodo).
+                 Antes eran opciones escritas a mano, congeladas en 2025. -->
           </select>
         </div>
         <div class="form-group">
@@ -1282,32 +1277,28 @@ textarea{resize:vertical;min-height:80px}
         </div>
         <div class="form-group">
           <label>Color en el horario</label>
-          <div id="mod-color-picker" style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="pink" checked style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="pink" style="width:28px;height:28px;border-radius:50%;background:var(--pink);border:3px solid var(--pink);display:block"></span>Rosa
-            </label>
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="green" style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="green" style="width:28px;height:28px;border-radius:50%;background:var(--green);border:3px solid transparent;display:block"></span>Verde
-            </label>
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="gold" style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="gold" style="width:28px;height:28px;border-radius:50%;background:var(--gold);border:3px solid transparent;display:block"></span>Dorado
-            </label>
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="blue" style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="blue" style="width:28px;height:28px;border-radius:50%;background:#378ADD;border:3px solid transparent;display:block"></span>Azul
-            </label>
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="purple" style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="purple" style="width:28px;height:28px;border-radius:50%;background:#7F77DD;border:3px solid transparent;display:block"></span>Morado
-            </label>
-            <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--gray-600)">
-              <input type="radio" name="mod-color" value="coral" style="display:none" class="color-radio">
-              <span class="color-swatch" data-color="coral" style="width:28px;height:28px;border-radius:50%;background:#D85A30;border:3px solid transparent;display:block"></span>Coral
-            </label>
+          <div id="mod-color-picker" style="margin-top:6px">
+            <div id="mod-color-preview" style="border-radius:8px;padding:10px 12px;font-size:13px;font-weight:500;margin-bottom:10px;text-align:center">Así se verá la clase</div>
+
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+              <input type="color" id="mod-color-input" value="#e91e8c" title="Elegir color"
+                     style="width:54px;height:40px;padding:2px;border:1px solid var(--gray-200);border-radius:8px;background:white;cursor:pointer;flex-shrink:0">
+              <div class="input-prefix" style="flex:1;min-width:130px">
+                <span>#</span>
+                <input type="text" id="mod-color-hex" maxlength="6" placeholder="e91e8c" autocomplete="off"
+                       style="text-transform:lowercase">
+              </div>
+            </div>
+
+            <div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">Colores sugeridos</div>
+            <div id="mod-color-presets" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+
+            <div id="mod-color-recientes-wrap" style="display:none;margin-top:10px">
+              <div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">Usados hace poco</div>
+              <div id="mod-color-recientes" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+            </div>
           </div>
+        </div>
           <div class="form-group full">
           <label>Precio Clase Suelta ($)</label>
           <input type="number" id="mod-precioClase" placeholder="Ej: 150">
@@ -1395,7 +1386,10 @@ let state = {
   ],
   eventosClases: DB.get('eventosClases')||[],
   editId: null,
-  // Tracking de eliminaciones para sync con Sheets
+  // Borrados que deben propagarse a los demás dispositivos (hoja «Borrados»).
+  // Sustituye a las listas deletedX, que eran locales y nunca se subían.
+  borrados: DB.get('borrados')||[],
+  // Listas antiguas: se conservan solo para migrarlas una vez
   deletedAlumnos: DB.get('deletedAlumnos')||[],
   deletedPagos: DB.get('deletedPagos')||[],
   deletedUniformes: DB.get('deletedUniformes')||[],
@@ -1408,6 +1402,20 @@ let currentNotaFiltro = 'todas';
 
 function save(key){ DB.set(key, state[key]) }
 function saveDeleted(key){ DB.set(key, state[key]) }
+
+// ══ ESCAPADO DE HTML ══
+// Todo texto que escribe la usuaria debe pasar por aquí antes de entrar en el
+// DOM. Sin esto, un nombre con < > & " rompe la maquetación, y un texto mal
+// intencionado podría ejecutar código (y el token de Google está en localStorage).
+function esc(v){
+  if(v===null || v===undefined) return '';
+  return String(v)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
 
 // ══ NOMBRES HISTÓRICOS ══
 // Los pagos y los uniformes son registros contables: deben seguir siendo legibles
@@ -1475,7 +1483,7 @@ function showPage(page, btn){
   if(page==='alumnos') renderAlumnos();
   if(page==='pagos'){ renderPagosMes(); renderHistorialPagos(); }
   if(page==='uniformes'){ renderUniformes(); renderPiezas(); }
-  if(page==='asistencia'){ renderListaAsistencia(); renderHistAsistencia(); }
+  if(page==='asistencia'){ poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia(); }
   if(page==='notas') renderNotas();
   if(page==='horarios') renderHorario();
   if(page==='configuracion') cargarConfig();
@@ -1516,7 +1524,7 @@ function cerrarSidebar(){
 function openModal(id){
   if(id==='modal-pago'||id==='modal-uniforme'||id==='modal-nota') populateAlumnaSelects();
   if(id==='modal-uniforme') renderPiezasCheck();
-  if(id==='modal-pago'){ poblarSelectPromocion(); setTimeout(()=>onConceptoChange(),50); }
+  if(id==='modal-pago'){ poblarSelectPromocion(); poblarSelectPeriodo(); setTimeout(()=>onConceptoChange(),50); }
   document.getElementById(id).classList.add('open');
 }
 function closeModal(id){
@@ -1534,9 +1542,9 @@ function closeModal(id){
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open')) });
 
 function populateAlumnaSelects(){
-  const opts = `<option value="">— Selecciona —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
+  const opts = `<option value="">— Selecciona —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${esc(a.nombre)}</option>`).join('');
   ['p-alumna','u-alumna','n-alumna','nota-rapida-alumna'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.innerHTML=(id==='n-alumna'||id==='nota-rapida-alumna')?`<option value="">— General —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join(''):opts;
+    const el=document.getElementById(id); if(el) el.innerHTML=(id==='n-alumna'||id==='nota-rapida-alumna')?`<option value="">— General —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${esc(a.nombre)}</option>`).join(''):opts;
   });
 }
 
@@ -1585,115 +1593,253 @@ function renderDashboard(){
   const feed=document.getElementById('actividad-feed');
   const items=[...state.pagos.slice(-3).reverse().map(p=>{
     const a=state.alumnos.find(x=>x.id==p.alumnaId);
-    return {color:'var(--green)',text:`<strong>${a?a.nombre:'?'}</strong> pagó $${Number(p.montoPagado).toLocaleString('es-MX')}`,time:p.fecha};
-  }),...state.alumnos.slice(-2).reverse().map(a=>({color:'var(--pink)',text:`<strong>${a.nombre}</strong> fue registrada`,time:a.ingreso}))];
+    return {color:'var(--green)',text:`<strong>${a?esc(a.nombre):'?'}</strong> pagó $${Number(p.montoPagado).toLocaleString('es-MX')}`,time:p.fecha};
+  }),...state.alumnos.slice(-2).reverse().map(a=>({color:'var(--pink)',text:`<strong>${esc(a.nombre)}</strong> fue registrada`,time:a.ingreso}))];
   if(!items.length){ feed.innerHTML='<div class="activity-item"><div class="activity-dot" style="background:var(--gray-200)"></div><div><div class="activity-text">Sin actividad reciente</div></div></div>'; return; }
   feed.innerHTML=items.slice(0,5).map(i=>`<div class="activity-item"><div class="activity-dot" style="background:${i.color}"></div><div><div class="activity-text">${i.text}</div><div class="activity-time">${i.time||'—'}</div></div></div>`).join('');
 }
 
-function renderMiniCalendario(){
-  const now=new Date();
-  const y=calAnio; const m=calMes;
-  const dias=['L','M','M','J','V','S','D'];
-  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+// ══ CALENDARIO DEL DASHBOARD ══
+// Tres vistas: Mes, Semana y Día. Se eligen desde el propio calendario.
+// Los días reflejan las clases REALES: respeta cancelaciones y reagendados.
 
-  // Calcular offset (semana empieza en Lunes)
-  const firstDay=new Date(y,m,1).getDay(); // 0=dom
-  const offset=(firstDay+6)%7; // 0=lun...6=dom
-  const totalDias=new Date(y,m+1,0).getDate();
+let calVista = 'mes';        // 'mes' | 'semana' | 'dia'
+let calFecha = new Date();   // fecha de referencia de la vista
 
-  // Días del mes anterior para rellenar inicio
-  const diasMesAnterior=new Date(y,m,0).getDate();
+const MESES_LARGOS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DIAS_LETRA=['D','L','M','M','J','V','S'];                       // por getDay(): 0=domingo
+const DIAS_NOMBRE=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 
-  // Días del mes siguiente para rellenar fin
-  const totalCeldas=Math.ceil((offset+totalDias)/7)*7;
-  const diasSiguiente=totalCeldas-(offset+totalDias);
+function aISO(f){ return f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0'); }
+function fechaDeISO(s){ const p=String(s||'').split('-').map(Number); return new Date(p[0],(p[1]||1)-1,p[2]||1); }
+// 0=domingo … 6=sábado. Los reagendados antiguos guardaban 7 para el domingo.
+function normalizarDiaSemana(d){ const n=Number(d); if(isNaN(n)) return -1; return n===7?0:n; }
+function mismoDia(a,b){ return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
 
-  // Colores por día de semana
-  const COLORS_HEX={pink:'#e91e8c',green:'#4a7c59',gold:'#c9a84c',blue:'#378ADD',purple:'#7F77DD',coral:'#D85A30'};
-  const diasConClase={};
-  state.modalidades.forEach(mo=>{
-    if(!mo.dias) return;
-    mo.dias.forEach(d=>{ diasConClase[d]=diasConClase[d]||[]; diasConClase[d].push(COLORS_HEX[mo.color||'pink']||'#e91e8c'); });
+// Clases que realmente se dan en una fecha concreta.
+// - Las cancelaciones valen para ese día de la semana (todas las semanas).
+// - Los reagendados se muestran en su fecha nueva.
+function clasesDeFecha(fecha){
+  const dow=fecha.getDay();
+  const iso=aISO(fecha);
+  const eventos=state.eventosClases||[];
+  const canceladas=eventos.filter(e=>e.accion==='cancelada'&&normalizarDiaSemana(e.dia)===dow);
+
+  const lista=(state.modalidades||[])
+    .filter(m=>m.dias&&m.dias.includes(dow))
+    .map(m=>{
+      const cancelada=canceladas.some(e=>e.modalidadId===m.id&&(!e.hora||e.hora===m.hora));
+      return { nombre:m.nombre||'', hora:m.hora||'', duracion:m.duracion||60,
+               color:normalizarColor(m.color), cancelada:cancelada };
+    });
+
+  eventos.filter(e=>e.accion==='reagendada'&&e.nuevaFecha===iso).forEach(e=>{
+    const m=(state.modalidades||[]).find(x=>x.id===e.modalidadId);
+    lista.push({ nombre:(m?m.nombre:'Clase'), hora:e.nuevaHora||(m?m.hora:'')||'', duracion:m?m.duracion||60:60,
+                 color:normalizarColor(m?m.color:'#185FA5'), reagendada:true });
   });
 
-  const esHoy=(d,mm,yy)=>d===now.getDate()&&mm===now.getMonth()&&yy===now.getFullYear();
+  lista.sort((a,b)=>String(a.hora).localeCompare(String(b.hora)));
+  return lista;
+}
 
-  function diaHtml(d, dayOfWeek, esHoyFlag, otherMonth){
-    const colores=(!otherMonth&&diasConClase[dayOfWeek])||[];
-    if(esHoyFlag){
-      return '<div class="cal-day today">'+d+'</div>';
-    } else if(colores.length){
-      const c=colores[0];
-      return '<div class="cal-day" style="border:2px solid '+c+';border-radius:50%;color:'+c+';font-weight:600;box-sizing:border-box">'+d+'</div>';
-    } else if(otherMonth){
-      return '<div class="cal-day other-month" style="color:var(--gray-200)">'+d+'</div>';
+// Anillo del día: un segmento por clase. Con una sola clase es un aro liso,
+// así que el aspecto de siempre se mantiene.
+function anilloDia(colores){
+  const lista=(colores&&colores.length)?colores:[];
+  if(!lista.length) return '';
+  if(lista.length===1) return 'conic-gradient('+lista[0]+' 0turn 1turn)';
+  const paso=1/lista.length;
+  const partes=lista.map((c,i)=>c+' '+(i*paso).toFixed(4)+'turn '+((i+1)*paso).toFixed(4)+'turn');
+  return 'conic-gradient('+partes.join(',')+')';
+}
+
+function cabeceraCalendario(titulo, mostrarHoy){
+  let h='<div class="mini-cal-header" style="flex-wrap:wrap;gap:6px">';
+  h+='<button data-accion="calNavegar" data-id="-1" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-600);padding:2px 8px;border-radius:6px;line-height:1" title="Anterior">‹</button>';
+  h+='<span>'+esc(titulo)+'</span>';
+  h+='<button data-accion="calNavegar" data-id="1" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-600);padding:2px 8px;border-radius:6px;line-height:1" title="Siguiente">›</button>';
+  h+='</div>';
+
+  h+='<div style="display:flex;gap:4px;background:var(--gray-100);border-radius:6px;padding:3px;margin-bottom:10px">';
+  [['mes','Mes'],['semana','Semana'],['dia','Día']].forEach(function(par){
+    const v=par[0], et=par[1];
+    const activo=calVista===v;
+    h+='<button data-accion="calVista" data-id="'+v+'" style="flex:1;padding:5px 6px;border:none;border-radius:4px;font-size:11.5px;cursor:pointer;font-family:var(--font-body);'+
+       (activo?'background:white;color:var(--gray-800);font-weight:600;box-shadow:var(--shadow-sm)':'background:none;color:var(--gray-600)')+'">'+et+'</button>';
+  });
+  h+='</div>';
+
+  if(mostrarHoy){
+    h+='<div style="text-align:center;margin-top:8px"><button data-accion="calIrHoy" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--pink);font-weight:500;padding:4px 8px;border-radius:6px">↩ Hoy</button></div>';
+  }
+  return h;
+}
+
+// ── Vista de MES ──
+function vistaMes(){
+  const now=new Date();
+  const y=calFecha.getFullYear(), m=calFecha.getMonth();
+  const firstDay=new Date(y,m,1).getDay();
+  const offset=(firstDay+6)%7;                 // la semana empieza en lunes
+  const totalDias=new Date(y,m+1,0).getDate();
+  const diasMesAnterior=new Date(y,m,0).getDate();
+  const totalCeldas=Math.ceil((offset+totalDias)/7)*7;
+  const diasSiguiente=totalCeldas-(offset+totalDias);
+  const mAnterior=m===0?11:m-1, yAnterior=m===0?y-1:y;
+  const mSiguiente=m===11?0:m+1, ySiguiente=m===11?y+1:y;
+
+  function celdaDia(dia, fecha, otherMonth, hoy){
+    const clases=otherMonth?[]:clasesDeFecha(fecha);
+    const vivas=clases.filter(c=>!c.cancelada);
+    const colores=vivas.map(c=>c.color);
+    const iso=aISO(fecha);
+    const etiqueta=clases.length
+      ? clases.length+' clase'+(clases.length>1?'s':'')+': '+clases.map(c=>c.hora+' '+c.nombre).join(', ')
+      : 'Sin clases';
+
+    let interior;
+    if(colores.length){
+      // El número lleva el color de la primera clase; el aro reparte todas
+      interior='<div style="width:100%;height:100%;border-radius:50%;padding:2px;box-sizing:border-box;background:'+anilloDia(colores)+';display:flex">'+
+               '<div style="width:100%;height:100%;border-radius:50%;background:'+(hoy?'var(--pink)':'white')+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:'+(hoy?'white':colores[0])+'">'+dia+'</div>'+
+               '</div>';
+    } else if(hoy){
+      interior='<div style="width:100%;height:100%;border-radius:50%;background:var(--pink);color:white;font-weight:600;display:flex;align-items:center;justify-content:center">'+dia+'</div>';
     } else {
-      return '<div class="cal-day">'+d+'</div>';
+      interior='<div style="width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;'+
+               (otherMonth?'color:var(--gray-200)':'color:var(--gray-600)')+'">'+dia+'</div>';
     }
+
+    return '<div class="cal-day" data-accion="calDia" data-id="'+iso+'" title="'+esc(etiqueta)+'" style="padding:0">'+interior+'</div>';
   }
 
-  // Construir HTML
-  const esMesActual=m===now.getMonth()&&y===now.getFullYear();
-  const mAnterior=m===0?11:m-1; const yAnterior=m===0?y-1:y;
-  const mSiguiente=m===11?0:m+1; const ySiguiente=m===11?y+1:y;
-
-  let h='';
-  // Header con flechas
-  h+='<div class="mini-cal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-  h+='<button onclick="calNavegar(-1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-600);padding:4px 8px;border-radius:6px;line-height:1" title="Mes anterior">‹</button>';
-  h+='<span style="font-weight:500;font-size:13px">'+meses[m]+' '+y+'</span>';
-  h+='<button onclick="calNavegar(1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-600);padding:4px 8px;border-radius:6px;line-height:1" title="Mes siguiente">›</button>';
-  h+='</div>';
+  let h=cabeceraCalendario(MESES_LARGOS[m]+' '+y, !(m===now.getMonth()&&y===now.getFullYear()));
   h+='<div class="mini-cal-grid">';
-  dias.forEach(d=>h+='<div class="cal-day-name">'+d+'</div>');
+  DIAS_LETRA.forEach(function(d){ h+='<div class="cal-day-name">'+d+'</div>'; });
 
-  // Días mes anterior
   for(let i=offset-1;i>=0;i--){
-    const d=diasMesAnterior-i;
-    const dow=new Date(yAnterior,mAnterior,d).getDay();
-    h+=diaHtml(d,dow,esHoy(d,mAnterior,yAnterior),true);
+    const dia=diasMesAnterior-i;
+    const f=new Date(yAnterior,mAnterior,dia);
+    h+=celdaDia(dia,f,true,mismoDia(f,now));
   }
-  // Días del mes actual
-  for(let d=1;d<=totalDias;d++){
-    const dow=new Date(y,m,d).getDay();
-    h+=diaHtml(d,dow,esHoy(d,m,y),false);
+  for(let dia=1;dia<=totalDias;dia++){
+    const f=new Date(y,m,dia);
+    h+=celdaDia(dia,f,false,mismoDia(f,now));
   }
-  // Días mes siguiente
-  for(let d=1;d<=diasSiguiente;d++){
-    const dow=new Date(ySiguiente,mSiguiente,d).getDay();
-    h+=diaHtml(d,dow,esHoy(d,mSiguiente,ySiguiente),true);
+  for(let dia=1;dia<=diasSiguiente;dia++){
+    const f=new Date(ySiguiente,mSiguiente,dia);
+    h+=celdaDia(dia,f,true,mismoDia(f,now));
   }
-
   h+='</div>';
-  // Botón "Hoy" si no estamos en el mes actual
-  if(!esMesActual){
-    h+='<div style="text-align:center;margin-top:8px"><button onclick="calIrHoy()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--pink);font-weight:500;padding:4px 8px;border-radius:6px">↩ Hoy</button></div>';
+  return h;
+}
+
+// Ficha compacta de una clase
+function fichaClase(c){
+  const estilo=c.cancelada
+    ? 'background:var(--gray-100);color:var(--gray-400);text-decoration:line-through'
+    : 'background:'+c.color+';color:'+textoSobre(c.color);
+  return '<div style="'+estilo+';border-radius:4px;padding:3px 6px;font-size:10.5px;font-weight:500;margin-bottom:2px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+         esc(c.hora)+' · '+esc(c.nombre)+(c.reagendada?' ↩':'')+'</div>';
+}
+
+// ── Vista de SEMANA ──
+function vistaSemana(){
+  const ref=new Date(calFecha.getFullYear(),calFecha.getMonth(),calFecha.getDate());
+  const dow=ref.getDay();
+  const lunes=new Date(ref); lunes.setDate(ref.getDate()-((dow+6)%7));
+  const domingo=new Date(lunes); domingo.setDate(lunes.getDate()+6);
+  const titulo=(lunes.getMonth()===domingo.getMonth())
+    ? lunes.getDate()+' – '+domingo.getDate()+' de '+MESES_LARGOS[lunes.getMonth()]
+    : lunes.getDate()+' '+MESES_LARGOS[lunes.getMonth()].slice(0,3)+' – '+domingo.getDate()+' '+MESES_LARGOS[domingo.getMonth()].slice(0,3);
+
+  const ahora=new Date();
+  const hoyCero=new Date(ahora.getFullYear(),ahora.getMonth(),ahora.getDate());
+  const contieneHoy = hoyCero>=lunes && hoyCero<=domingo;
+
+  let h=cabeceraCalendario(titulo, !contieneHoy);
+
+  for(let i=0;i<7;i++){
+    const f=new Date(lunes); f.setDate(lunes.getDate()+i);
+    const clases=clasesDeFecha(f);
+    const esHoy=mismoDia(f,ahora);
+    h+='<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--gray-50)">';
+    h+='<div style="width:34px;flex-shrink:0;text-align:center">'+
+         '<div style="font-size:10px;color:var(--gray-400);text-transform:uppercase">'+DIAS_LETRA[f.getDay()]+'</div>'+
+         '<div style="font-size:15px;font-weight:'+(esHoy?'600':'500')+';color:'+(esHoy?'var(--pink)':'var(--gray-800)')+'">'+f.getDate()+'</div>'+
+       '</div>';
+    h+='<div style="flex:1;min-width:0">'+
+         (clases.length?clases.map(fichaClase).join(''):'<div style="font-size:11px;color:var(--gray-300);padding:3px 0">Sin clases</div>')+
+       '</div>';
+    h+='</div>';
+  }
+  return h;
+}
+
+// ── Vista de DÍA ──
+function vistaDia(){
+  const f=calFecha;
+  const clases=clasesDeFecha(f);
+  const ahora=new Date();
+  const titulo=DIAS_NOMBRE[f.getDay()].charAt(0).toUpperCase()+DIAS_NOMBRE[f.getDay()].slice(1)+', '+f.getDate()+' de '+MESES_LARGOS[f.getMonth()];
+
+  let h=cabeceraCalendario(titulo, !mismoDia(f,ahora));
+
+  if(!clases.length){
+    h+='<div style="text-align:center;padding:18px 0;color:var(--gray-400);font-size:12.5px">Sin clases este día 🌿</div>';
+    return h;
   }
 
-  document.getElementById('mini-calendario').innerHTML=h;
+  clases.forEach(function(c){
+    const estilo=c.cancelada
+      ? 'border-left:4px solid var(--gray-200);opacity:.7'
+      : 'border-left:4px solid '+c.color;
+    h+='<div style="'+estilo+';background:var(--gray-50);border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+         '<div style="font-size:13px;font-weight:600;'+(c.cancelada?'text-decoration:line-through;color:var(--gray-400)':'color:var(--gray-800)')+'">'+esc(c.nombre)+'</div>'+
+         '<div style="font-size:11.5px;color:var(--gray-600);margin-top:2px">'+esc(c.hora)+' · '+c.duracion+' min'+
+           (c.reagendada?' · <span style="color:#185FA5">reagendada</span>':'')+
+           (c.cancelada?' · <span style="color:#dc2626">cancelada</span>':'')+
+         '</div>'+
+       '</div>';
+  });
+  return h;
 }
 
+function renderMiniCalendario(){
+  const cont=document.getElementById('mini-calendario'); if(!cont) return;
+  let h='';
+  if(calVista==='semana') h=vistaSemana();
+  else if(calVista==='dia') h=vistaDia();
+  else h=vistaMes();
+  cont.innerHTML=h;
+}
+
+// Navegación: avanza según la vista activa
 function calNavegar(delta){
-  calMes+=delta;
-  if(calMes>11){ calMes=0; calAnio++; }
-  if(calMes<0){ calMes=11; calAnio--; }
+  if(calVista==='dia') calFecha.setDate(calFecha.getDate()+delta);
+  else if(calVista==='semana') calFecha.setDate(calFecha.getDate()+(delta*7));
+  else { calFecha.setDate(1); calFecha.setMonth(calFecha.getMonth()+delta); }
   renderMiniCalendario();
 }
 
-function calIrHoy(){
-  calMes=new Date().getMonth();
-  calAnio=new Date().getFullYear();
-  renderMiniCalendario();
+function calIrHoy(){ calFecha=new Date(); renderMiniCalendario(); }
+
+function cambiarVistaCalendario(v){
+  if(v!=='mes'&&v!=='semana'&&v!=='dia') return;
+  calVista=v; renderMiniCalendario();
+}
+
+function abrirDiaCalendario(iso){
+  const f=fechaDeISO(iso);
+  if(isNaN(f.getTime())) return;
+  calFecha=f; calVista='dia'; renderMiniCalendario();
 }
 
 // ══ ALUMNOS ══
 let filtroAlumnos = '';
 // Apartado visible de la lista: 'activas' | 'inactivas' | 'todas'
 let filtroEstadoAlumnos = 'activas';
-// Estado del mini-calendario
-let calMes = new Date().getMonth();
-let calAnio = new Date().getFullYear();
 function filtrarAlumnos(){ filtroAlumnos=document.getElementById('search-alumnos').value.toLowerCase(); renderAlumnos(); }
 
 // Cambia de apartado (Activas / Bajas e inactivas / Todas)
@@ -1748,14 +1894,14 @@ function renderAlumnos(){
         '<div style="display:flex;align-items:center;gap:6px">'+
           '<div style="width:9px;height:9px;border-radius:50%;background:'+stColor+';flex-shrink:0"></div>'+
           '<div>'+
-            '<strong>'+a.nombre+'</strong>'+
-            '<div style="font-size:11px;color:var(--gray-400)">'+(a.email||'')+'</div>'+
+            '<strong>'+esc(a.nombre)+'</strong>'+
+            '<div style="font-size:11px;color:var(--gray-400)">'+esc(a.email||'')+'</div>'+
           '</div>'+
         '</div>'+
       '</td>'+
-      '<td>'+(a.telefono||'—')+'</td>'+
-      '<td>'+(a.modalidad||'—')+'</td>'+
-      '<td>$'+Number(precio||0).toLocaleString('es-MX')+' <small style="color:var(--gray-400)">'+(a.tipoPago||'')+'</small></td>'+
+      '<td>'+esc(a.telefono||'—')+'</td>'+
+      '<td>'+esc(a.modalidad||'—')+'</td>'+
+      '<td>$'+Number(precio||0).toLocaleString('es-MX')+' <small style="color:var(--gray-400)">'+esc(a.tipoPago||'')+'</small></td>'+
       '<td>'+(pagado?'<span class="badge badge-green">✓ Pagado</span>':'<span class="badge badge-red">⚠ Pendiente</span>')+'</td>'+
       '<td><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:'+stColor+'">'+
         '<span style="width:9px;height:9px;border-radius:50%;background:'+stColor+';display:inline-block"></span>'+stLabel+
@@ -1870,11 +2016,8 @@ function eliminarAlumno(id){
     ? '¿Eliminar a '+a.nombre+' definitivamente? Tiene '+nPagos+' pago(s) y '+nUnif+' uniforme(s) registrados. Esos registros conservarán su nombre. Si solo dejó de asistir, es mejor darla de BAJA: así puedes reactivarla y no pierdes nada.'
     : '¿Eliminar a '+a.nombre+'?';
   customConfirm(msg, ()=>{
-    // Registrar eliminación para sync con Sheets
-    if(!state.deletedAlumnos.includes(id)){
-      state.deletedAlumnos.push(id);
-      saveDeleted('deletedAlumnos');
-    }
+    // Se registra el borrado para que llegue a los demás dispositivos
+    registrarBorrado('alumnos', id);
     state.alumnos=state.alumnos.filter(a=>a.id!==id);
     save('alumnos');
     renderAlumnos(); renderDashboard();
@@ -1913,7 +2056,7 @@ function mostrarSelectorAlumna(){
 function actualizarSelects(){
   ['nota-rapida-alumna'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return;
-    el.innerHTML=`<option value="">— General —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
+    el.innerHTML=`<option value="">— General —</option>`+state.alumnos.map(a=>`<option value="${a.id}">${esc(a.nombre)}</option>`).join('');
   });
 }
 
@@ -1998,13 +2141,13 @@ function renderPagosMes(){
     pagosMes.forEach(p=>{
       const tr=document.createElement('tr');
       tr.innerHTML=
-        '<td><strong>'+nombreAlumna(p.alumnaId,p.alumnaNombre)+'</strong></td>'+
-        '<td><span class="badge badge-blue">'+(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
+        '<td><strong>'+esc(nombreAlumna(p.alumnaId,p.alumnaNombre))+'</strong></td>'+
+        '<td><span class="badge badge-blue">'+esc(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
         '<td style="font-size:12px;color:var(--gray-600)">'+getPeriodoLabel(p)+'</td>'+
         '<td><strong>$'+Number(p.montoPagado).toLocaleString('es-MX')+'</strong></td>'+
-        '<td>'+((p.promoNombre&&p.promoNombre.trim())?'<span class="promo-tag">🏷 '+p.promoNombre+'</span>':'—')+'</td>'+
+        '<td>'+((p.promoNombre&&p.promoNombre.trim())?'<span class="promo-tag">🏷 '+esc(p.promoNombre)+'</span>':'—')+'</td>'+
         '<td>'+(p.fecha||'—')+'</td>'+
-        '<td>'+(p.metodo||'—')+'</td>'+
+        '<td>'+esc(p.metodo||'—')+'</td>'+
         '<td></td>';
       const tdAcc=tr.querySelector('td:last-child');
       const btnDel=document.createElement('button');
@@ -2028,8 +2171,8 @@ function renderPagosMes(){
       listaP.innerHTML=pendientes.map(a=>{
         const cfg=state.config;
         const precio=a.tipoPago==='mensual'?cfg.precioMensual:a.tipoPago==='bimestral'?cfg.precioBimestral:cfg.precioClase;
-        return '<span style="display:inline-flex;align-items:center;gap:6px;background:white;border:1px solid var(--gray-200);border-radius:20px;padding:4px 10px;margin:3px;font-size:12px;cursor:pointer" onclick="pagoRapido('+a.id+')">'+
-          a.nombre+' <span style="color:var(--green);font-weight:600">$'+Number(precio||0).toLocaleString('es-MX')+'</span> <span style="color:var(--pink)">+ cobrar</span></span>';
+        return '<span style="display:inline-flex;align-items:center;gap:6px;background:white;border:1px solid var(--gray-200);border-radius:20px;padding:4px 10px;margin:3px;font-size:12px;cursor:pointer" data-accion="pagoRapido" data-id="'+a.id+'">'+
+          esc(a.nombre)+' <span style="color:var(--green);font-weight:600">$'+Number(precio||0).toLocaleString('es-MX')+'</span> <span style="color:var(--pink)">+ cobrar</span></span>';
       }).join('');
     } else {
       banner.style.display='none';
@@ -2050,14 +2193,14 @@ function renderHistorialPagos(){
   todos.forEach(p=>{
     const tr=document.createElement('tr');
     tr.innerHTML=
-      '<td>'+nombreAlumna(p.alumnaId,p.alumnaNombre)+'</td>'+
-      '<td><span class="badge badge-blue">'+(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
+      '<td>'+esc(nombreAlumna(p.alumnaId,p.alumnaNombre))+'</td>'+
+      '<td><span class="badge badge-blue">'+esc(p.conceptoLabel||p.concepto||'—')+'</span></td>'+
       '<td style="font-size:12px;color:var(--gray-600)">'+getPeriodoLabel(p)+'</td>'+
       '<td><strong>$'+Number(p.montoPagado).toLocaleString('es-MX')+'</strong></td>'+
-      '<td>'+((p.promoNombre&&p.promoNombre.trim())?'<span class="promo-tag">🏷 '+p.promoNombre+'</span>':'—')+'</td>'+
+      '<td>'+((p.promoNombre&&p.promoNombre.trim())?'<span class="promo-tag">🏷 '+esc(p.promoNombre)+'</span>':'—')+'</td>'+
       '<td>'+(p.fecha||'—')+'</td>'+
-      '<td>'+(p.metodo||'—')+'</td>'+
-      '<td style="font-size:12px;color:var(--gray-400)">'+(p.notas||'—')+'</td>';
+      '<td>'+esc(p.metodo||'—')+'</td>'+
+      '<td style="font-size:12px;color:var(--gray-400)">'+esc(p.notas||'—')+'</td>';
     tbody.appendChild(tr);
   });
 }
@@ -2071,26 +2214,13 @@ function renderPendientes(){
   if(!pendientes.length){ el.innerHTML=`<div class="empty-state"><div class="empty-icon">🎉</div><p>¡Todas las alumnas activas han pagado este mes!</p></div>`; return; }
   el.innerHTML=pendientes.map(a=>{
     const cfg=state.config; const precio=a.tipoPago==='mensual'?cfg.precioMensual:a.tipoPago==='bimestral'?cfg.precioBimestral:cfg.precioClase;
-    return `<div class="asist-row"><div><div class="asist-name">${a.nombre}</div><div style="font-size:12px;color:var(--gray-400)">${a.modalidad||''} · $${Number(precio||0).toLocaleString('es-MX')}</div></div><button class="btn btn-primary btn-sm" onclick="pagoRapido(${a.id})">💳 Cobrar</button></div>`;
-  }).join('');
-}
-
-function renderHistorialPagos(){
-  const tbody=document.getElementById('tabla-historial-pagos'); if(!tbody) return;
-  const todos=[...state.pagos].reverse();
-  if(!todos.length){ tbody.innerHTML=`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📋</div><p>Sin pagos registrados</p></div></td></tr>`; return; }
-  tbody.innerHTML=todos.map(p=>{
-    return `<tr><td>${nombreAlumna(p.alumnaId,p.alumnaNombre)}</td><td>${p.concepto||'—'} · ${p.periodo||''}</td><td><strong>$${Number(p.montoPagado).toLocaleString('es-MX')}</strong></td><td>${p.fecha||'—'}</td><td>${p.metodo||'—'}</td><td>${p.notas||'—'}</td></tr>`;
+    return `<div class="asist-row"><div><div class="asist-name">${esc(a.nombre)}</div><div style="font-size:12px;color:var(--gray-400)">${esc(a.modalidad||'')} · $${Number(precio||0).toLocaleString('es-MX')}</div></div><button class="btn btn-primary btn-sm" data-accion="pagoRapido" data-id="${a.id}">💳 Cobrar</button></div>`;
   }).join('');
 }
 
 function eliminarPago(id){
   customConfirm('¿Eliminar este pago?', ()=>{
-    // Registrar eliminación para sync con Sheets
-    if(!state.deletedPagos.includes(id)){
-      state.deletedPagos.push(id);
-      saveDeleted('deletedPagos');
-    }
+    registrarBorrado('pagos', id);            // se propaga a los demás dispositivos
     state.pagos=state.pagos.filter(p=>p.id!==id); save('pagos');
     renderPagosMes(); renderHistorialPagos(); renderDashboard(); toast('Pago eliminado');
     syncGoogle(true);
@@ -2103,7 +2233,7 @@ function renderPiezasCheck(){
   c.innerHTML=state.piezas.map(p=>`
     <label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--gray-50);cursor:pointer;font-size:13.5px">
       <input type="checkbox" value="${p.id}" data-precio="${p.precio}" onchange="calcularTotalUniforme()" style="width:16px;height:16px;accent-color:var(--pink)">
-      ${p.nombre} — <span style="color:var(--green);font-weight:500">$${Number(p.precio).toLocaleString('es-MX')}</span>
+      ${esc(p.nombre)} — <span style="color:var(--green);font-weight:500">$${Number(p.precio).toLocaleString('es-MX')}</span>
     </label>`).join('');
 }
 
@@ -2147,8 +2277,8 @@ function renderUniformes(){
     const badgeClass={liquidado:'badge-green',parcial:'badge-yellow',pendiente:'badge-red'}[u.estado]||'badge-gray';
     const tr=document.createElement('tr');
     tr.innerHTML=
-      '<td><strong>'+nombreAlumna(u.alumnaId,u.alumnaNombre)+'</strong></td>'+
-      '<td style="font-size:12px">'+(u.piezas?.map(p=>p.nombre).join(', ')||'—')+'</td>'+
+      '<td><strong>'+esc(nombreAlumna(u.alumnaId,u.alumnaNombre))+'</strong></td>'+
+      '<td style="font-size:12px">'+esc(u.piezas?.map(p=>p.nombre).join(', ')||'—')+'</td>'+
       '<td><strong>$'+Number(u.total||0).toLocaleString('es-MX')+'</strong></td>'+
       '<td>'+(u.pago1?'$'+Number(u.pago1).toLocaleString('es-MX'):'—')+'</td>'+
       '<td style="font-size:12px">'+(u.fecha1||'—')+'</td>'+
@@ -2216,11 +2346,7 @@ function registrar2doPago(id){
 }
 
 function eliminarUniforme(id){ customConfirm('¿Eliminar este uniforme?', ()=>{
-  // Registrar eliminación para sync con Sheets
-  if(!state.deletedUniformes.includes(id)){
-    state.deletedUniformes.push(id);
-    saveDeleted('deletedUniformes');
-  }
+  registrarBorrado('uniformes', id);          // se propaga a los demás dispositivos
   state.uniformes=state.uniformes.filter(u=>u.id!==id); save('uniformes'); renderUniformes(); renderDashboard(); toast('Uniforme eliminado'); syncGoogle(true);
 }); }
 
@@ -2229,10 +2355,10 @@ function renderPiezas(){
   if(!state.piezas.length){ el.innerHTML='<p style="font-size:13px;color:var(--gray-400);padding:12px 0">Sin piezas configuradas</p>'; return; }
   el.innerHTML=state.piezas.map(p=>`
     <div class="uniform-part">
-      <div><div class="uniform-part-name">${p.nombre}</div></div>
+      <div><div class="uniform-part-name">${esc(p.nombre)}</div></div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="uniform-part-price">$${Number(p.precio).toLocaleString('es-MX')}</span>
-        <button class="btn btn-danger btn-sm" onclick="eliminarPieza(${p.id})">🗑️</button>
+        <button class="btn btn-danger btn-sm" data-accion="eliminarPieza" data-id="${p.id}">🗑️</button>
       </div>
     </div>`).join('');
   renderResumenPrecios();
@@ -2242,7 +2368,7 @@ function renderResumenPrecios(){
   const el=document.getElementById('resumen-precios'); if(!el) return;
   const total=state.piezas.reduce((s,p)=>s+p.precio,0);
   el.innerHTML=`<div style="font-size:13px;color:var(--gray-600);margin-bottom:12px">${state.piezas.length} pieza(s) configuradas</div>`+
-    state.piezas.map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-50);font-size:13px"><span>${p.nombre}</span><span style="color:var(--green);font-weight:500">$${Number(p.precio).toLocaleString('es-MX')}</span></div>`).join('')+
+    state.piezas.map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-50);font-size:13px"><span>${esc(p.nombre)}</span><span style="color:var(--green);font-weight:500">$${Number(p.precio).toLocaleString('es-MX')}</span></div>`).join('')+
     `<div style="display:flex;justify-content:space-between;padding:12px 0;font-weight:600;font-size:14px"><span>Total uniforme completo</span><span style="color:var(--pink)">$${total.toLocaleString('es-MX')}</span></div>`;
 }
 
@@ -2255,7 +2381,7 @@ function guardarPieza(){
   document.getElementById('pi-nombre').value=''; document.getElementById('pi-precio').value='';
 }
 
-function eliminarPieza(id){ customConfirm('¿Eliminar esta pieza?', ()=>{ state.piezas=state.piezas.filter(p=>p.id!==id); save('piezas'); renderPiezas(); toast('Pieza eliminada'); }); }
+function eliminarPieza(id){ customConfirm('¿Eliminar esta pieza?', ()=>{ registrarBorrado('piezas', id); state.piezas=state.piezas.filter(p=>p.id!==id); save('piezas'); renderPiezas(); renderPiezasCheck(); toast('Pieza eliminada'); syncGoogle(true); }); }
 
 // ══ ASISTENCIA ══
 // ── Modelo único de asistencia: ARRAY de {id, alumnaId, fecha, estado} ──
@@ -2331,14 +2457,54 @@ function claseDeAsistencia(fecha, alumnaId, claseGuardada){
   return m?m.nombre:(claseGuardada||a.modalidad);
 }
 
+// ── Selector de clase de Asistencia ──
+// Antes eran tres <option> escritas a mano en el HTML, ajenas a las modalidades
+// configuradas, y el selector no servía para nada: cambiarlo no filtraba nada.
+// Ahora se genera desde state.modalidades y filtra la lista de alumnas.
+let claseAsistencia = '';   // '' = todas las clases
+
+function poblarSelectClaseAsistencia(){
+  const sel=document.getElementById('clase-asistencia'); if(!sel) return;
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const modalidades=(state.modalidades||[]).filter(m=>m&&m.nombre);
+  const previo=claseAsistencia;
+  sel.innerHTML='';
+  const todas=document.createElement('option');
+  todas.value=''; todas.textContent='Todas las clases';
+  sel.appendChild(todas);
+  modalidades.forEach(m=>{
+    const d=(m.dias||[]).map(x=>dias[x]).filter(Boolean).join(', ');
+    const op=document.createElement('option');
+    op.value=m.nombre;
+    op.textContent=m.nombre+(d?' — '+d:'')+(m.hora?' '+m.hora:'');
+    sel.appendChild(op);
+  });
+  // Si la clase seleccionada ya no existe (se borró en Configuración), volver a "Todas"
+  claseAsistencia = modalidades.some(m=>m.nombre===previo) ? previo : '';
+  sel.value=claseAsistencia;
+}
+
+function cambiarClaseAsistencia(valor){
+  claseAsistencia=valor||'';
+  renderListaAsistencia();
+}
+
 function renderListaAsistencia(){
   const el=document.getElementById('lista-asistencia'); if(!el) return;
+  poblarSelectClaseAsistencia();   // se mantiene sincronizado con las modalidades
   const fechaEl=document.getElementById('fecha-asistencia');
   const today=new Date().toISOString().split('T')[0];
   if(fechaEl&&!fechaEl.value) fechaEl.value=today;
   const fecha=fechaEl?fechaEl.value:today;
-  const alumnos=state.alumnos.filter(a=>a.estado==='activa');
-  if(!alumnos.length){ el.innerHTML='<div class="empty-state"><div class="empty-icon">👩‍🎓</div><p>No hay alumnas activas</p></div>'; return; }
+  let alumnos=state.alumnos.filter(a=>a.estado==='activa');
+  if(claseAsistencia) alumnos=alumnos.filter(a=>a.modalidad===claseAsistencia);
+  if(!alumnos.length){
+    const msg=claseAsistencia
+      ? 'Ninguna alumna activa está en la clase «'+claseAsistencia+'»'
+      : 'No hay alumnas activas';
+    el.innerHTML='<div class="empty-state"><div class="empty-icon">👩‍🎓</div><p>'+msg+'</p></div>';
+    return;
+  }
   el.innerHTML='';
   const asist=asistenciaActual(); // normaliza y repara si el dato venía corrupto
   alumnos.forEach(a=>{
@@ -2349,7 +2515,7 @@ function renderListaAsistencia(){
     const nameDiv=document.createElement('div');
     nameDiv.className='asist-name';
     const stColor={activa:'#16a34a',baja:'#ea580c',inactiva:'#dc2626'}[a.estado]||'#888';
-    nameDiv.innerHTML='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+stColor+';margin-right:6px;vertical-align:middle"></span>'+a.nombre;
+    nameDiv.innerHTML='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+stColor+';margin-right:6px;vertical-align:middle"></span>'+esc(a.nombre);
     const toggleDiv=document.createElement('div');
     toggleDiv.className='asist-toggle';
     [['presente','✓','Presente'],['falta','✗','Falta'],['justificada','J','Justificada']].forEach(([tipo,label,title])=>{
@@ -2372,7 +2538,8 @@ function setAsistencia(alumnaId, estado, btn, fechaParam){
   const alumna=state.alumnos.find(x=>x.id==alumnaId);
   const extras={
     alumnaNombre:(alumna&&alumna.nombre)||'',
-    clase:claseDeAsistencia(fecha,alumnaId)
+    // Si hay una clase elegida en el selector, manda esa
+    clase:claseAsistencia||claseDeAsistencia(fecha,alumnaId)
   };
   const idx=asist.findIndex(x=>x.alumnaId==alumnaId&&x.fecha===fecha);
   if(idx>=0) Object.assign(asist[idx],{estado:normalizarEstadoAsistencia(estado)},extras);
@@ -2394,25 +2561,52 @@ function renderHistAsistencia(){
     const faltas=reg.filter(x=>x.estado==='falta').length;
     const just=reg.filter(x=>x.estado==='justificada').length;
     const pct=total?Math.round(pres/total*100):0;
-    return `<tr><td>${a.nombre}</td><td>${total}</td><td>${pres}</td><td>${faltas}</td><td>${just}</td>
+    return `<tr><td>${esc(a.nombre)}</td><td>${total}</td><td>${pres}</td><td>${faltas}</td><td>${just}</td>
       <td><span class="badge ${pct>=80?'badge-green':pct>=60?'badge-yellow':'badge-red'}">${pct}%</span></td></tr>`;
   }).join('');
 }
 
 // ══ HORARIO ══
-// Colores disponibles
-const COLORES = {
-  pink:   {bg:'#e91e8c', text:'white'},
-  green:  {bg:'#4a7c59', text:'white'},
-  gold:   {bg:'#c9a84c', text:'white'},
-  blue:   {bg:'#378ADD', text:'white'},
-  purple: {bg:'#7F77DD', text:'white'},
-  coral:  {bg:'#D85A30', text:'white'}
-};
+// Una modalidad puede usar CUALQUIER color: se guarda como #rrggbb.
+// Los nombres antiguos (pink, green, gold…) se siguen entendiendo, así que las
+// modalidades ya guardadas no se rompen ni hay que migrar nada.
+const COLORES_PRESET = [
+  { nombre:'Rosa',     hex:'#e91e8c' },
+  { nombre:'Verde',    hex:'#4a7c59' },
+  { nombre:'Dorado',   hex:'#c9a84c' },
+  { nombre:'Azul',     hex:'#378add' },
+  { nombre:'Morado',   hex:'#7f77dd' },
+  { nombre:'Coral',    hex:'#d85a30' },
+  { nombre:'Turquesa', hex:'#17a2b8' },
+  { nombre:'Violeta',  hex:'#8e44ad' }
+];
+// Equivalencias de los colores guardados antes de v1.5.2
+const COLORES_ANTIGUOS = { pink:'#e91e8c', green:'#4a7c59', gold:'#c9a84c', blue:'#378add', purple:'#7f77dd', coral:'#d85a30' };
+const COLOR_POR_DEFECTO = '#e91e8c';
+
+// Acepta un nombre antiguo, "#abc", "abcdef" o "#AABBCC" y devuelve "#aabbcc"
+function normalizarColor(v){
+  if(v===null || v===undefined) return COLOR_POR_DEFECTO;
+  const s=String(v).trim().toLowerCase();
+  if(COLORES_ANTIGUOS[s]) return COLORES_ANTIGUOS[s];
+  if(/^#[0-9a-f]{6}$/.test(s)) return s;
+  if(/^#[0-9a-f]{3}$/.test(s)) return '#'+s[1]+s[1]+s[2]+s[2]+s[3]+s[3];
+  if(/^[0-9a-f]{6}$/.test(s)) return '#'+s;
+  return COLOR_POR_DEFECTO;
+}
+
+// Blanco o negro según el brillo del fondo: con colores libres, el texto fijo
+// blanco dejaría de leerse en los tonos claros.
+function textoSobre(fondo){
+  const c=normalizarColor(fondo).slice(1);
+  const r=parseInt(c.slice(0,2),16), g=parseInt(c.slice(2,4),16), b=parseInt(c.slice(4,6),16);
+  const brillo=(0.299*r + 0.587*g + 0.114*b)/255;
+  return brillo>0.62 ? '#1f2937' : '#ffffff';
+}
 
 function getColorStyle(color){
-  const c=COLORES[color]||COLORES.pink;
-  return `background:${c.bg};color:${c.text}`;
+  const fondo=normalizarColor(color);
+  return 'background:'+fondo+';color:'+textoSobre(fondo);
 }
 
 function renderHorario(){
@@ -2431,21 +2625,21 @@ function renderHorario(){
       // Clases normales de modalidades
       const clasesMod=state.modalidades.filter(m=>m.dias&&m.dias.includes(d)&&m.hora===h);
       // Clases reagendadas para este slot
-            const reagendadas=state.eventosClases.filter(e=>e.accion==='reagendada'&&e.nuevaDia===d&&e.nuevaHora===h);
+            const reagendadas=state.eventosClases.filter(e=>e.accion==='reagendada'&&normalizarDiaSemana(e.nuevaDia)===d&&e.nuevaHora===h);
       const canceladas=state.eventosClases.filter(e=>e.accion==='cancelada'&&e.dia===d&&e.hora===h);
       const canceladasIds=canceladas.map(e=>e.modalidadId);
       let cellHtml='';
       clasesMod.forEach(m=>{
         if(canceladasIds.includes(m.id)){
-          cellHtml+='<div style="background:#9ca3af;color:white;border-radius:4px;padding:4px 6px;font-size:11px;line-height:1.3;cursor:pointer;margin-bottom:2px;opacity:0.7" onclick="abrirGestionClase('+m.id+','+d+',\''+h+'\')" title="Clase cancelada - clic para ver">'+m.nombre+'<br><small style="text-decoration:line-through">Cancelada</small></div>';
+          cellHtml+='<div style="background:#9ca3af;color:white;border-radius:4px;padding:4px 6px;font-size:11px;line-height:1.3;cursor:pointer;margin-bottom:2px;opacity:0.7" data-accion="gestionClase" data-id="'+m.id+'" data-dia="'+d+'" data-hora="'+h+'" title="Clase cancelada - clic para ver">'+esc(m.nombre)+'<br><small style="text-decoration:line-through">Cancelada</small></div>';
         } else {
           const cs=getColorStyle(m.color||'pink');
-          cellHtml+='<div class="sch-event" style="'+cs+';border-radius:4px;padding:4px 6px;font-size:11px;font-weight:500;line-height:1.3;cursor:pointer;margin-bottom:2px" onclick="abrirGestionClase('+m.id+','+d+',\''+h+'\')" title="Clic para gestionar">'+m.nombre+'<br><small>'+m.hora+' · '+(m.duracion||60)+'min</small></div>';
+          cellHtml+='<div class="sch-event" style="'+cs+';border-radius:4px;padding:4px 6px;font-size:11px;font-weight:500;line-height:1.3;cursor:pointer;margin-bottom:2px" data-accion="gestionClase" data-id="'+m.id+'" data-dia="'+d+'" data-hora="'+h+'" title="Clic para gestionar">'+esc(m.nombre)+'<br><small>'+m.hora+' · '+(m.duracion||60)+'min</small></div>';
         }
       });
       reagendadas.forEach(e=>{
         const m=state.modalidades.find(x=>x.id===e.modalidadId);
-        cellHtml+='<div class="sch-event" style="background:#185FA5;color:white;border-radius:4px;padding:4px 6px;font-size:10px;font-weight:500;line-height:1.3;cursor:pointer;margin-bottom:2px" onclick="verEventoClase('+e.id+')" title="Clase reagendada">↩ '+(m?m.nombre:'')+'<br><small>Reagendada</small></div>';
+        cellHtml+='<div class="sch-event" style="background:#185FA5;color:white;border-radius:4px;padding:4px 6px;font-size:10px;font-weight:500;line-height:1.3;cursor:pointer;margin-bottom:2px" data-accion="verEventoClase" data-id="'+e.id+'" title="Clase reagendada">↩ '+esc(m?m.nombre:'')+'<br><small>Reagendada</small></div>';
       });
 html+='<div class="sch-cell">'+cellHtml+'</div>';
     }
@@ -2473,7 +2667,7 @@ function renderListaClases(){
       '<div style="display:flex;align-items:center;gap:8px">'+
         '<div style="width:10px;height:10px;border-radius:50%;'+cs+'"></div>'+
         '<div>'+
-          '<div style="font-size:13.5px;font-weight:500">'+m.nombre+'</div>'+
+          '<div style="font-size:13.5px;font-weight:500">'+esc(m.nombre)+'</div>'+
           '<div style="font-size:12px;color:var(--gray-400)">'+diasNom+' · '+m.hora+' · '+(m.duracion||60)+'min</div>'+
         '</div>'+
       '</div>';
@@ -2493,7 +2687,7 @@ function renderListaClases(){
       div.innerHTML=
         '<div style="width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0"></div>'+
         '<div>'+
-          '<div style="font-size:13px;font-weight:500;color:#185FA5">↩ '+(m?m.nombre:'')+'</div>'+
+          '<div style="font-size:13px;font-weight:500;color:#185FA5">↩ '+esc(m?m.nombre:'')+'</div>'+
           '<div style="font-size:12px;color:var(--gray-400)">'+e.nuevaFecha+' '+e.nuevaHora+'</div>'+
         '</div>';
       el.appendChild(div);
@@ -2541,8 +2735,8 @@ function guardarEventoClase(){
     nuevaFecha=document.getElementById('cancel-nueva-fecha').value;
     nuevaHora=document.getElementById('cancel-nueva-hora').value;
     if(!nuevaFecha){ toast('Elige una fecha para reagendar','error'); return; }
-    const d=new Date(nuevaFecha+'T12:00:00');
-    nuevaDia=d.getDay()===0?7:d.getDay();
+    // 0=domingo … 6=sábado, igual que modalidades.dias y que eventosClases.dia
+    nuevaDia=new Date(nuevaFecha+'T12:00:00').getDay();
   }
   const evento={
     id:Date.now(),
@@ -2581,8 +2775,8 @@ function renderEventosClases(){
     div.innerHTML=
       '<div style="width:36px;height:36px;border-radius:8px;'+cs+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+(isReag?'↩':'✗')+'</div>'+
       '<div style="flex:1">'+
-        '<div style="font-size:13.5px;font-weight:500;color:var(--gray-800)">'+e.titulo+'</div>'+
-        (e.motivo?'<div style="font-size:12.5px;color:var(--gray-600);margin-top:3px">'+e.motivo+'</div>':'')+
+        '<div style="font-size:13.5px;font-weight:500;color:var(--gray-800)">'+esc(e.titulo)+'</div>'+
+        (e.motivo?'<div style="font-size:12.5px;color:var(--gray-600);margin-top:3px">'+esc(e.motivo)+'</div>':'')+
         '<div style="font-size:11px;color:var(--gray-400);margin-top:4px">Registrado: '+e.fecha+'</div>'+
       '</div>'+
       '<button class="btn btn-danger btn-sm" style="flex-shrink:0">🗑️</button>';
@@ -2610,10 +2804,10 @@ function renderNotas(){
   el.innerHTML=notas.map(n=>{
     const a=n.alumnaId?state.alumnos.find(x=>x.id==n.alumnaId):null;
     return `<div class="nota-card">
-      <div class="nota-alumno">${a?'👩‍🎓 '+a.nombre:'📌 General'}</div>
-      <div class="nota-text">${n.texto}</div>
+      <div class="nota-alumno">${a?'👩‍🎓 '+esc(a.nombre):'📌 General'}</div>
+      <div class="nota-text">${esc(n.texto)}</div>
       <div class="nota-date">${n.fecha||'—'}</div>
-      <div class="nota-actions"><button class="btn btn-danger btn-sm" onclick="eliminarNota(${n.id})">🗑️</button></div>
+      <div class="nota-actions"><button class="btn btn-danger btn-sm" data-accion="eliminarNota" data-id="${n.id}">🗑️</button></div>
     </div>`;
   }).join('');
 }
@@ -2637,7 +2831,14 @@ function guardarNotaRapida(){
   renderNotas(); toast('Nota guardada');
 }
 
-function eliminarNota(id){ state.notas=state.notas.filter(n=>n.id!==id); save('notas'); renderNotas(); toast('Nota eliminada'); }
+function eliminarNota(id){
+  // Antes borraba al instante; el resto de la app sí pide confirmación
+  customConfirm('¿Eliminar esta nota?', ()=>{
+    registrarBorrado('notas', id);
+    state.notas=state.notas.filter(n=>n.id!==id);
+    save('notas'); renderNotas(); toast('Nota eliminada'); syncGoogle(true);
+  });
+}
 
 // ══ CONFIG ══
 function cargarConfig(){
@@ -2673,8 +2874,8 @@ function renderListaPromociones(){
   const el=document.getElementById('lista-promociones'); if(!el) return;
   el.innerHTML=state.promociones.length?state.promociones.map(p=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--gray-50);border-radius:var(--radius-sm);margin-bottom:6px">
-      <span style="font-size:13px">${p.nombre} — <strong>${p.valor}</strong></span>
-      <button class="btn btn-danger btn-sm" onclick="eliminarPromo(${p.id})">🗑️</button>
+      <span style="font-size:13px">${esc(p.nombre)} — <strong>${esc(p.valor)}</strong></span>
+      <button class="btn btn-danger btn-sm" data-accion="eliminarPromo" data-id="${p.id}">🗑️</button>
     </div>`).join(''):'<p style="font-size:12px;color:var(--gray-400)">Sin promociones configuradas</p>';
 }
 
@@ -2688,10 +2889,13 @@ function guardarPromo(){
   syncGoogle(true);
 }
 function eliminarPromo(id){
+  // Antes borraba al instante; el resto de la app sí pide confirmación
+  customConfirm('¿Eliminar esta promoción?', ()=>{
+    registrarBorrado('promociones', id);
     state.promociones=state.promociones.filter(p=>p.id!==id);
-    state.deletedPromociones.push(id);
-    save('promociones'); save('deletedPromociones');
-    renderListaPromociones(); toast('Eliminada'); syncGoogle(true);
+    save('promociones');
+    renderListaPromociones(); renderPagosMes(); toast('Eliminada'); syncGoogle(true);
+  });
 }
 
 // ══ MODALIDADES ══
@@ -2708,7 +2912,7 @@ function renderModalidadesCfg(){
     div.innerHTML=
       '<div style="width:12px;height:12px;border-radius:50%;'+cs+';flex-shrink:0"></div>'+
       '<div style="flex:1">'+
-        '<div style="font-size:13.5px;font-weight:500;color:var(--gray-800)">'+m.nombre+'</div>'+
+        '<div style="font-size:13.5px;font-weight:500;color:var(--gray-800)">'+esc(m.nombre)+'</div>'+
         '<div style="font-size:12px;color:var(--gray-400)">'+diasNom+' · '+m.hora+' · '+(m.duracion||60)+'min'+(m.precio?' · $'+Number(m.precio).toLocaleString('es-MX'):'')+
         '</div>'+
       '</div>'+
@@ -2741,18 +2945,14 @@ function editarModalidad(id){
   document.querySelectorAll('#mod-dias-check input').forEach(c=>{
     c.checked=m.dias&&m.dias.includes(Number(c.value));
   });
-  // Marcar color
-  document.querySelectorAll('input[name="mod-color"]').forEach(r=>{
-    r.checked=r.value===(m.color||'pink');
-  });
-  document.querySelectorAll('.color-swatch').forEach(s=>{
-    s.style.border=s.dataset.color===(m.color||'pink')?'3px solid var(--gray-800)':'3px solid transparent';
-  });
+  // Color: se resuelve el que tuviera guardado (nombre antiguo o hexadecimal)
+  colorModalidad=normalizarColor(m.color);
   openModal('modal-modalidad');
+  pintarSelectorColor();   // el modal debe estar abierto para que existan los nodos
 }
 
 function actualizarSelectModalidad(){
-  const opts=state.modalidades.map(m=>`<option value="${m.nombre}">${m.nombre}</option>`).join('');
+  const opts=state.modalidades.map(m=>`<option value="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
   const el=document.getElementById('a-modalidad'); if(el) el.innerHTML=opts;
 }
 
@@ -2762,14 +2962,15 @@ function guardarModalidad(){
   if(!state.editId&&state.modalidades.some(m=>m.nombre.toLowerCase()===nombre.toLowerCase())){ toast('Esa modalidad ya existe','error'); return; }
   // Días seleccionados
   const diasCheck=[...document.querySelectorAll('#mod-dias-check input:checked')].map(c=>Number(c.value));
-  // Color seleccionado
-  const colorSel=document.querySelector('input[name="mod-color"]:checked');
-  const color=colorSel?colorSel.value:'pink';
+  // Color elegido en el selector (siempre un hexadecimal)
+  const color=normalizarColor(colorModalidad);
+  recordarColor(color);
   const hora=document.getElementById('mod-hora').value||'17:00';
   const duracion=Number(document.getElementById('mod-duracion').value)||60;
   const precioClase=Number(document.getElementById('mod-precioClase').value)||0;
   const precioMensual=Number(document.getElementById('mod-precioMensual').value)||0;
   const precioBimestral=Number(document.getElementById('mod-precioBimestral').value)||0;
+  const eraEdicion=!!state.editId;
   const mod={id:state.editId||Date.now(),nombre,dias:diasCheck,hora,duracion,color,precioClase,precioMensual,precioBimestral};
   if(state.editId){
     const i=state.modalidades.findIndex(m=>m.id===state.editId);
@@ -2788,25 +2989,102 @@ function guardarModalidad(){
   renderHorario();
   actualizarSelectModalidad();
   syncGoogle(true);
-  toast(state.editId?'Modalidad actualizada':'Modalidad agregada');
+  toast(eraEdicion?'Modalidad actualizada':'Modalidad agregada');
 }
 
-// Interacción color swatches
-document.addEventListener('change', function(e){
-  if(e.target&&e.target.name==='mod-color'){
-    document.querySelectorAll('.color-swatch').forEach(s=>{
-      s.style.border='3px solid transparent';
-    });
-    const swatch=e.target.parentElement.querySelector('.color-swatch');
-    if(swatch) swatch.style.border='3px solid var(--gray-800)';
+// ══ SELECTOR DE COLOR ══
+let colorModalidad = COLOR_POR_DEFECTO;
+
+function coloresRecientes(){
+  const r=DB.get('coloresRecientes');
+  return Array.isArray(r)?r:[];
+}
+function recordarColor(hex){
+  const limpio=normalizarColor(hex);
+  const lista=coloresRecientes().filter(c=>c!==limpio);
+  lista.unshift(limpio);
+  DB.set('coloresRecientes', lista.slice(0,8));
+}
+
+function elegirColor(hex){
+  colorModalidad=normalizarColor(hex);
+  pintarSelectorColor();
+}
+
+function pintarSelectorColor(){
+  const prev=document.getElementById('mod-color-preview');
+  if(prev){
+    prev.style.background=colorModalidad;
+    prev.style.color=textoSobre(colorModalidad);
+    prev.textContent='Así se verá la clase';
   }
-});
+  const entrada=document.getElementById('mod-color-input');
+  if(entrada && document.activeElement!==entrada) entrada.value=colorModalidad;
+  const hex=document.getElementById('mod-color-hex');
+  // No pisar lo que la usuaria está escribiendo
+  if(hex && document.activeElement!==hex) hex.value=colorModalidad.slice(1);
+
+  const presets=document.getElementById('mod-color-presets');
+  if(presets){
+    presets.innerHTML='';
+    COLORES_PRESET.forEach(p=>{
+      const b=document.createElement('button');
+      b.type='button'; b.title=p.nombre; b.setAttribute('aria-label',p.nombre);
+      b.style.cssText='width:30px;height:30px;border-radius:50%;padding:0;cursor:pointer;background:'+p.hex+
+        ';border:3px solid '+(colorModalidad===p.hex?'var(--gray-800)':'transparent');
+      b.onclick=()=>elegirColor(p.hex);
+      presets.appendChild(b);
+    });
+  }
+
+  const recientes=coloresRecientes();
+  const envoltorio=document.getElementById('mod-color-recientes-wrap');
+  const cont=document.getElementById('mod-color-recientes');
+  if(envoltorio && cont){
+    envoltorio.style.display = recientes.length ? 'block' : 'none';
+    cont.innerHTML='';
+    recientes.forEach(c=>{
+      const b=document.createElement('button');
+      b.type='button'; b.title=c;
+      b.style.cssText='width:26px;height:26px;border-radius:50%;padding:0;cursor:pointer;background:'+c+';border:2px solid var(--gray-200)';
+      b.onclick=()=>elegirColor(c);
+      cont.appendChild(b);
+    });
+  }
+}
+
+// Conectar los dos campos una sola vez
+(function conectarSelectorColor(){
+  const entrada=document.getElementById('mod-color-input');
+  if(entrada) entrada.addEventListener('input', function(){ elegirColor(entrada.value); });
+  const hex=document.getElementById('mod-color-hex');
+  if(hex) hex.addEventListener('input', function(){
+    const v=hex.value.replace('#','').trim();
+    if(/^[0-9a-f]{6}$/i.test(v) || /^[0-9a-f]{3}$/i.test(v)) elegirColor('#'+v);
+  });
+})();
+
+// Al abrir el modal para una modalidad nueva, empezar con el color por defecto
+function prepararModalidadNueva(){
+  state.editId=null;
+  document.getElementById('modal-modalidad-title').textContent='Nueva modalidad';
+  document.getElementById('mod-nombre').value='';
+  document.getElementById('mod-hora').value='17:00';
+  document.getElementById('mod-duracion').value=60;
+  document.getElementById('mod-precioClase').value='';
+  document.getElementById('mod-precioMensual').value='';
+  document.getElementById('mod-precioBimestral').value='';
+  document.querySelectorAll('#mod-dias-check input').forEach(c=>{ c.checked=false; });
+  colorModalidad=COLOR_POR_DEFECTO;
+  openModal('modal-modalidad');
+  pintarSelectorColor();   // pintar presets, muestra y vista previa al abrir
+}
 
 function eliminarModalidad(id){
   customConfirm('¿Eliminar esta modalidad?', ()=>{
+    registrarBorrado('modalidades', id);
     state.modalidades=state.modalidades.filter(m=>m.id!==id);
-    state.deletedModalidades.push(id);
-    save('modalidades'); save('deletedModalidades');
+    save('modalidades');
     renderModalidadesCfg(); renderHorario(); renderDashboard();
     syncGoogle(true);
     toast('Modalidad eliminada');
@@ -2817,7 +3095,30 @@ function eliminarModalidad(id){
 function poblarSelectPromocion(){
   const sel=document.getElementById('p-descuento-promo'); if(!sel) return;
   sel.innerHTML='<option value="">— Sin promoción —</option>'+
-    state.promociones.map(p=>`<option value="${p.id}" data-valor="${p.valor}">${p.nombre} — ${p.valor}</option>`).join('');
+    state.promociones.map(p=>`<option value="${p.id}" data-valor="${esc(p.valor)}">${esc(p.nombre)} — ${esc(p.valor)}</option>`).join('');
+}
+
+// ── Selector de período de pago ──
+// Antes eran doce <option> escritas a mano con meses de 2025, así que al llegar
+// 2026 ya no se podía etiquetar un pago con el período correcto.
+// El formato debe seguir siendo "Mes Año" (lo interpreta getPeriodoLabel).
+function poblarSelectPeriodo(){
+  const sel=document.getElementById('p-periodo'); if(!sel) return;
+  const ahora=new Date();
+  const anioActual=ahora.getFullYear();
+  const previo=sel.value;
+  sel.innerHTML='';
+  // Un año antes y uno después: cubre pagos atrasados y adelantados
+  [anioActual-1, anioActual, anioActual+1].forEach(anio=>{
+    MESES_NAMES.forEach(mes=>{
+      const op=document.createElement('option');
+      op.value=mes+' '+anio;
+      op.textContent=mes+' '+anio;
+      sel.appendChild(op);
+    });
+  });
+  const porDefecto=MESES_NAMES[ahora.getMonth()]+' '+anioActual;
+  sel.value=[...sel.options].some(o=>o.value===previo)?previo:porDefecto;
 }
 
 function onConceptoChange(){
@@ -3134,186 +3435,326 @@ async function sheetsRequest(method, path, body=null){
   return r.json();
 }
 
-// Limpiar y escribir una hoja completa
+// ══════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS — escritura, lectura y sincronización
+// ══════════════════════════════════════════════════════════════
+
+// Escribe una hoja completa SIN vaciarla antes.
+// Antes se limpiaba la hoja entera y después se escribía: si la escritura fallaba
+// (sin red, token caducado, cuota), se perdían TODOS los datos de la hoja.
+// Ahora se escribe primero y solo se limpia lo que sobra por debajo.
 async function writeSheet(sheetName, headers, rows){
   const sid = state.config.sheetsId;
   if(!sid) throw new Error('No hay Sheet ID configurado');
-  
-  // Limpiar hoja
-  await sheetsRequest('POST', '/'+sid+'/values/'+encodeURIComponent(sheetName)+'!A1:ZZ10000:clear');
-  
-  // Escribir headers + datos
   const values = [headers, ...rows];
   await sheetsRequest('PUT', '/'+sid+'/values/'+encodeURIComponent(sheetName)+'!A1?valueInputOption=USER_ENTERED', {
     range: sheetName+'!A1',
     majorDimension: 'ROWS',
     values
   });
+  const sobrante = values.length + 1;
+  await sheetsRequest('POST', '/'+sid+'/values/'+encodeURIComponent(sheetName)+'!A'+sobrante+':ZZ20000:clear');
 }
 
-// Leer una hoja
 async function readSheet(sheetName){
   const sid = state.config.sheetsId;
   const r = await sheetsRequest('GET', '/'+sid+'/values/'+encodeURIComponent(sheetName));
   return r.values || [];
 }
 
-// ══════════════════════════════════════
-// SINCRONIZACIÓN BIDIRECCIONAL (auto y manual)
-// ══════════════════════════════════════
+// ── Utilidades de lectura ──
+function mapaColumnas(headers){
+  const m={};
+  (headers||[]).forEach((h,i)=>{ m[String(h==null?'':h).trim().toLowerCase()]=i; });
+  return m;
+}
+// Lee por NOMBRE de columna, no por posición: así el código funciona igual con
+// hojas antiguas (sin AlumnaID, sin PiezasJSON…) que con las nuevas.
+function celda(fila, mapa, ...nombres){
+  for(const n of nombres){
+    const i=mapa[String(n).toLowerCase()];
+    if(i!==undefined && fila && fila[i]!==undefined && fila[i]!=='') return fila[i];
+  }
+  return undefined;
+}
+function aNumero(v, porDefecto){ const n=Number(v); return isNaN(n)?(porDefecto||0):n; }
 
-// ── Mergear datos locales con datos de Sheets ──
-function mergeAlumnos(local, remote){
-  const merged = [...local];
-  remote.forEach(r => {
-    if(!r[0]) return; // Skip empty rows
-    const remoteId = Number(r[0]);
-    // Ignorar si está en lista de eliminaciones
-    if(state.deletedAlumnos.includes(remoteId)) return;
-    const existsLocal = local.find(a => a.id === remoteId);
-    if(!existsLocal){
-      // Alumno nuevo del remote, agregarlo
-      merged.push({
-        id: remoteId,
-        nombre: r[1]||'',
-        telefono: r[2]||'',
-        email: r[3]||'',
-        nacimiento: r[4]||'',
-        modalidad: r[5]||'',
-        tipoPago: r[6]||'mensual',
-        ingreso: r[7]||'',
-        estado: r[8]||'activa',
-        notas: r[9]||''
-      });
+// Compara dos valores sin depender del orden de las claves (el remoto se
+// reconstruye al leer, así que el orden nunca coincide con el local).
+function canonico(v){
+  if(v===undefined) return 'undefined';
+  if(v===null || typeof v!=='object') return JSON.stringify(v);
+  if(Array.isArray(v)) return '['+v.map(canonico).join(',')+']';
+  return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonico(v[k])).join(',')+'}';
+}
+function iguales(a,b){ return canonico(a)===canonico(b); }
+
+// ── Entidades sincronizadas ──
+// Cada entrada describe cómo baja una colección a la hoja y cómo vuelve.
+const ENTIDADES = [
+  {
+    clave:'alumnos', hoja:'Alumnos',
+    claveDe: a=>a && a.id,
+    etiqueta: a=>'Alumna «'+((a&&a.nombre)||(a&&a.id)||'?')+'»',
+    cabeceras:['ID','Nombre','Teléfono','Email','Nacimiento','Modalidad','Tipo pago','Ingreso','Estado','Notas'],
+    aFila: a=>[a.id,a.nombre||'',a.telefono||'',a.email||'',a.nacimiento||'',a.modalidad||'',a.tipoPago||'',a.ingreso||'',a.estado||'activa',a.notas||''],
+    deFila: (f,m)=>({
+      id:aNumero(celda(f,m,'ID')),
+      nombre:celda(f,m,'Nombre')||'',
+      telefono:celda(f,m,'Teléfono','Telefono')||'',
+      email:celda(f,m,'Email')||'',
+      nacimiento:celda(f,m,'Nacimiento')||'',
+      modalidad:celda(f,m,'Modalidad')||'',
+      tipoPago:celda(f,m,'Tipo pago')||'mensual',
+      ingreso:celda(f,m,'Ingreso')||'',
+      estado:celda(f,m,'Estado')||'activa',
+      notas:celda(f,m,'Notas')||''
+    })
+  },
+  {
+    clave:'pagos', hoja:'Pagos',
+    claveDe: p=>p && p.id,
+    etiqueta: p=>'Pago de '+((p&&p.alumnaNombre)||'?')+' del '+((p&&p.fecha)||'?'),
+    // AlumnaID evita depender del nombre: antes se buscaba a la alumna por su
+    // nombre y al renombrarla el pago quedaba desvinculado (alumnaId = 0).
+    cabeceras:['ID','Alumna','AlumnaID','Concepto','Período','Monto','Promoción','Fecha','Método','Notas'],
+    aFila: p=>[p.id,nombreAlumna(p.alumnaId,p.alumnaNombre),p.alumnaId||'',p.conceptoLabel||p.concepto||'',p.periodo||'',p.montoPagado||0,p.promoNombre||'',p.fecha||'',p.metodo||'',p.notas||''],
+    deFila: (f,m,ctx)=>{
+      const nombre=celda(f,m,'Alumna')||'';
+      let alumnaId=aNumero(celda(f,m,'AlumnaID'));
+      if(!alumnaId && nombre){                       // hojas antiguas, sin AlumnaID
+        const a=(ctx.alumnos||[]).find(x=>x.nombre===nombre);
+        if(a) alumnaId=a.id;
+      }
+      const concepto=celda(f,m,'Concepto')||'';
+      return {
+        id:aNumero(celda(f,m,'ID')),
+        alumnaId, alumnaNombre:nombre,
+        conceptoLabel:concepto, concepto,
+        periodo:celda(f,m,'Período','Periodo')||'',
+        montoPagado:aNumero(celda(f,m,'Monto')),
+        promoNombre:celda(f,m,'Promoción','Promocion')||'',
+        fecha:celda(f,m,'Fecha')||'',
+        metodo:celda(f,m,'Método','Metodo')||'',
+        notas:celda(f,m,'Notas')||''
+      };
     }
-    // Si existe en ambos, no hacemos nada (el local es la versión más reciente)
-  });
-  return merged;
+  },
+  {
+    clave:'uniformes', hoja:'Uniformes',
+    claveDe: u=>u && u.id,
+    etiqueta: u=>'Uniforme de '+((u&&u.alumnaNombre)||'?'),
+    // PiezasJSON conserva las piezas con su precio; antes solo se guardaba el
+    // texto con los nombres y al leerlas se perdían (piezas: []).
+    cabeceras:['ID','Alumna','AlumnaID','Piezas','PiezasJSON','Total','1er pago','Fecha 1er pago','2do pago','Fecha liquidación','Estado'],
+    aFila: u=>[u.id,nombreAlumna(u.alumnaId,u.alumnaNombre),u.alumnaId||'',(u.piezas||[]).map(p=>p.nombre).join(', '),JSON.stringify(u.piezas||[]),u.total||0,u.pago1||0,u.fecha1||'',u.pago2||0,u.fechaLiq||'',u.estado||''],
+    deFila: (f,m,ctx)=>{
+      const nombre=celda(f,m,'Alumna')||'';
+      let alumnaId=aNumero(celda(f,m,'AlumnaID'));
+      if(!alumnaId && nombre){
+        const a=(ctx.alumnos||[]).find(x=>x.nombre===nombre);
+        if(a) alumnaId=a.id;
+      }
+      let piezas=[];
+      const json=celda(f,m,'PiezasJSON');
+      if(json){ try{ const p=JSON.parse(json); if(Array.isArray(p)) piezas=p; }catch(e){} }
+      if(!piezas.length){                            // hojas antiguas
+        piezas=String(celda(f,m,'Piezas')||'').split(',').map(s=>s.trim()).filter(Boolean)
+               .map((n,i)=>({ id:i+1, nombre:n, precio:0 }));
+      }
+      return {
+        id:aNumero(celda(f,m,'ID')),
+        alumnaId, alumnaNombre:nombre, piezas,
+        total:aNumero(celda(f,m,'Total')),
+        pago1:aNumero(celda(f,m,'1er pago')),
+        fecha1:celda(f,m,'Fecha 1er pago')||'',
+        pago2:aNumero(celda(f,m,'2do pago')),
+        fechaLiq:celda(f,m,'Fecha liquidación','Fecha liquidacion')||'',
+        estado:celda(f,m,'Estado')||''
+      };
+    }
+  },
+  {
+    clave:'asistencia', hoja:'Asistencia',
+    // La asistencia no tiene un ID propio en la hoja: la clave natural es alumna+fecha
+    claveDe: r=>r && (Number(r.alumnaId)+'|'+r.fecha),
+    etiqueta: r=>'Asistencia de '+((r&&r.alumnaNombre)||'?')+' el '+((r&&r.fecha)||'?'),
+    cabeceras:['Fecha','Clase','Alumna','AlumnaID','Status'],
+    aFila: r=>[r.fecha,claseDeAsistencia(r.fecha,r.alumnaId,r.clase),nombreAlumna(r.alumnaId,r.alumnaNombre),r.alumnaId,r.estado],
+    deFila: (f,m)=>{
+      const fecha=celda(f,m,'Fecha');
+      const alumnaId=aNumero(celda(f,m,'AlumnaID'));
+      if(!esFechaISO(fecha) || !alumnaId) return null;
+      return {
+        id:aNumero(celda(f,m,'ID'))||aNumero(String(fecha).replace(/-/g,''))+alumnaId,
+        alumnaId, alumnaNombre:celda(f,m,'Alumna')||'',
+        clase:celda(f,m,'Clase')||'', fecha,
+        estado:normalizarEstadoAsistencia(celda(f,m,'Status')||'')
+      };
+    }
+  },
+  {
+    clave:'notas', hoja:'Notas',
+    claveDe: n=>n && n.id,
+    etiqueta: n=>'Nota «'+String((n&&n.texto)||'').slice(0,40)+'»',
+    cabeceras:['ID','Alumna','AlumnaID','Texto','Fecha'],
+    aFila: n=>[n.id,nombreAlumna(n.alumnaId,n.alumnaNombre),n.alumnaId||'',n.texto||'',n.fecha||''],
+    deFila: (f,m,ctx)=>{
+      const nombre=celda(f,m,'Alumna')||'';
+      let alumnaId=aNumero(celda(f,m,'AlumnaID'));
+      if(!alumnaId && nombre){ const a=(ctx.alumnos||[]).find(x=>x.nombre===nombre); if(a) alumnaId=a.id; }
+      return {
+        id:aNumero(celda(f,m,'ID')),
+        alumnaId:alumnaId||null, alumnaNombre:nombre,
+        texto:celda(f,m,'Texto')||'', fecha:celda(f,m,'Fecha')||''
+      };
+    }
+  },
+  {
+    clave:'piezas', hoja:'Piezas',
+    claveDe: p=>p && p.id,
+    etiqueta: p=>'Pieza «'+((p&&p.nombre)||'?')+'»',
+    cabeceras:['ID','Nombre','Precio'],
+    aFila: p=>[p.id,p.nombre||'',p.precio||0],
+    deFila: (f,m)=>({ id:aNumero(celda(f,m,'ID')), nombre:celda(f,m,'Nombre')||'', precio:aNumero(celda(f,m,'Precio')) })
+  },
+  {
+    clave:'modalidades', hoja:'Modalidades',
+    claveDe: x=>x && x.id,
+    etiqueta: x=>'Modalidad «'+((x&&x.nombre)||'?')+'»',
+    // La app usa un único precio; antes la hoja guardaba tres columnas de precio
+    // y al leerlas se perdía el precio real de la modalidad.
+    cabeceras:['ID','Nombre','Días','Hora','Duración','Color','Precio'],
+    aFila: x=>[x.id,x.nombre||'',(x.dias||[]).join(','),x.hora||'',x.duracion||60,normalizarColor(x.color),x.precio||0],
+    deFila: (f,m)=>({
+      id:aNumero(celda(f,m,'ID')),
+      nombre:celda(f,m,'Nombre')||'',
+      dias:String(celda(f,m,'Días','Dias')||'').split(',').map(x=>x.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n)),
+      hora:celda(f,m,'Hora')||'',
+      duracion:aNumero(celda(f,m,'Duración','Duracion'),60),
+      color:normalizarColor(celda(f,m,'Color')),
+      precio:aNumero(celda(f,m,'Precio')!==undefined?celda(f,m,'Precio'):celda(f,m,'precioMensual','precioClase','precioBimestral'))
+    })
+  },
+  {
+    clave:'promociones', hoja:'Promociones',
+    claveDe: p=>p && p.id,
+    etiqueta: p=>'Promoción «'+((p&&p.nombre)||'?')+'»',
+    cabeceras:['ID','Nombre','Valor'],
+    aFila: p=>[p.id,p.nombre||'',p.valor||''],
+    deFila: (f,m)=>({ id:aNumero(celda(f,m,'ID')), nombre:celda(f,m,'Nombre')||'', valor:celda(f,m,'Valor')||'' })
+  }
+];
+
+function entidadPorClave(clave){ return ENTIDADES.find(e=>e.clave===clave); }
+
+// Convierte las filas de una hoja en registros usando el mapa de columnas
+function parsearHoja(def, filas, ctx){
+  const rows=filas||[];
+  if(rows.length<2) return [];
+  const mapa=mapaColumnas(rows[0]);
+  const out=[];
+  for(let i=1;i<rows.length;i++){
+    const r=def.deFila(rows[i]||[],mapa,ctx||{});
+    if(r) out.push(r);
+  }
+  return out;
 }
 
-function mergePagos(local, remote, alumnosLocal){
-  const merged = [...local];
-  remote.forEach(r => {
-    if(!r[0]) return;
-    const remoteId = Number(r[0]);
-    // Ignorar si está en lista de eliminaciones
-    if(state.deletedPagos.includes(remoteId)) return;
-    const existsLocal = local.find(p => p.id === remoteId);
-    if(!existsLocal){
-      // Buscar alumna por nombre
-      const alumnaNombre = r[1]||'';
-      const alumna = alumnosLocal.find(a => a.nombre === alumnaNombre);
-      merged.push({
-        id: remoteId,
-        alumnaId: alumna ? alumna.id : 0,
-        conceptoLabel: r[2]||'',
-        concepto: r[2]||'',
-        periodo: r[3]||'',
-        montoPagado: Number(r[4])||0,
-        promoNombre: r[5]||'',
-        fecha: r[6]||'',
-        metodo: r[7]||'',
-        notas: r[8]||''
-      });
+// ── MEZCLA EN TRES VÍAS ──
+// Compara lo local y lo remoto contra la BASE (cómo estaba el dato la última vez
+// que este dispositivo sincronizó). Así se distingue una edición de este
+// dispositivo de un cambio hecho en otro:
+//   · solo cambió aquí      → se conserva lo local
+//   · solo cambió allí      → se adopta lo remoto
+//   · cambió en los dos     → CONFLICTO, se avisa
+// Antes la versión local ganaba siempre, así que un dispositivo con datos viejos
+// pisaba las ediciones hechas en otro.
+function mezclarEntidad(def, local, remoto, base, ctx){
+  const indexar = arr => {
+    const m=new Map();
+    (arr||[]).forEach(r=>{ if(!r) return; const k=def.claveDe(r); if(k!=null && k!=='') m.set(String(k), r); });
+    return m;
+  };
+  const L=indexar(local), R=indexar(remoto), B=indexar(base);
+  const claves=new Set([...L.keys(), ...R.keys(), ...B.keys()]);
+  const datos=[], conflictos=[];
+  claves.forEach(k=>{
+    const l=L.get(k), r=R.get(k), b=B.get(k);
+    if(!l && !r) return;
+    if(l && !r){ datos.push(l); return; }              // solo está aquí: se conserva
+    if(!l && r){ datos.push(r); return; }              // nuevo, venía del otro dispositivo
+    if(iguales(l,r)){ datos.push(l); return; }         // idénticos
+    const cambioLocal  = b ? !iguales(l,b) : true;
+    const cambioRemoto = b ? !iguales(r,b) : false;
+    if(cambioLocal && cambioRemoto){
+      conflictos.push({ entidad:def.clave, clave:k, etiqueta:def.etiqueta(r), local:l, remoto:r });
+      datos.push(l);                                   // por defecto se conserva el de aquí
+    } else if(cambioRemoto){
+      datos.push(r);                                   // solo se editó en el otro
+    } else {
+      datos.push(l);                                   // solo aquí, o sin base todavía
     }
   });
-  return merged;
+  return { datos, conflictos };
 }
 
-function mergeUniformes(local, remote, alumnosLocal){
-  const merged = [...local];
-  remote.forEach(r => {
-    if(!r[0]) return;
-    const remoteId = Number(r[0]);
-    // Ignorar si está en lista de eliminaciones
-    if(state.deletedUniformes.includes(remoteId)) return;
-    const existsLocal = local.find(u => u.id === remoteId);
-    if(!existsLocal){
-      const alumnaNombre = r[1]||'';
-      const alumna = alumnosLocal.find(a => a.nombre === alumnaNombre);
-      merged.push({
-        id: remoteId,
-        alumnaId: alumna ? alumna.id : 0,
-        piezas: [],
-        total: Number(r[3])||0,
-        pago1: Number(r[4])||0,
-        fecha1: r[5]||'',
-        pago2: Number(r[6])||0,
-        fechaLiq: r[7]||'',
-        estado: r[8]||''
-      });
-    }
+// ── Borrados (tombstones) ──
+// Se guardan en su propia hoja para que un borrado hecho en un dispositivo
+// llegue a los demás. Antes las listas de borrados eran locales y nunca se
+// subían: lo borrado en el móvil reaparecía en la laptop al sincronizar.
+function registrarBorrado(entidad, refId){
+  if(refId==null || refId==='') return;
+  if(!Array.isArray(state.borrados)) state.borrados=[];
+  if(state.borrados.some(b=>b.entidad===entidad && String(b.refId)===String(refId))) return;
+  state.borrados.push({ entidad, refId:String(refId), fecha:new Date().toISOString() });
+  save('borrados');
+}
+
+function aplicarBorrados(datos, entidad, borrados){
+  const fuera=new Set((borrados||[]).filter(b=>b.entidad===entidad).map(b=>String(b.refId)));
+  if(!fuera.size) return datos;
+  return (datos||[]).filter(r=>!fuera.has(String(r.id)));
+}
+
+// ── Configuración ──
+// Mezcla clave por clave en tres vías. `clientId` y `sheetsId` son credenciales
+// de cada dispositivo y nunca se sobrescriben desde la hoja.
+function mergeConfig(local, remotoFilas, base){
+  const merged = Object.assign({}, local||{});
+  const R={}, B=base||{};
+  (remotoFilas||[]).forEach(row=>{
+    if(!row || row[0]===undefined || row[0]==='') return;
+    R[String(row[0])]=row[1];
+  });
+  const claves=new Set([...Object.keys(R), ...Object.keys(B)]);
+  claves.forEach(k=>{
+    if(k==='clientId' || k==='sheetsId') return;
+    const r=R[k];
+    if(r===undefined) return;
+    const l=merged[k], b=B[k];
+    if(l===undefined){ merged[k]=r; return; }
+    if(canonico(l)===canonico(r)) return;
+    const cambioLocal  = b!==undefined ? canonico(l)!==canonico(b) : true;
+    const cambioRemoto = b!==undefined ? canonico(r)!==canonico(b) : false;
+    if(cambioRemoto && !cambioLocal) merged[k]=r;   // solo se cambió en el otro dispositivo
   });
   return merged;
 }
 
-// Devuelve SIEMPRE un array (antes devolvía {...local}, que corrompía state.asistencia
-// al guardarlo syncGoogle y dejaba la página de Asistencia inutilizable).
-function mergeAsistencia(local, remote, alumnosLocal){
-  const merged = normalizarAsistencia(local);
-  (remote||[]).forEach(r => {
-    if(!r || !r[0] || !r[3]) return;          // sin fecha o sin alumna no hay nada que mezclar
-    const fecha = r[0];
-    const alumnaId = Number(r[3]);
-    if(!esFechaISO(fecha) || !alumnaId) return;
-    const estado = normalizarEstadoAsistencia(r[4]);
-    const idx = merged.findIndex(x=>Number(x.alumnaId)===alumnaId && x.fecha===fecha);
-    if(idx>=0) merged[idx].estado = estado;
-    else merged.push({ id: Date.now()+merged.length, alumnaId, fecha, estado });
-  });
-  return merged;
-}
+// ── Sincronización completa ──
+let syncEnCurso = false;
+let syncPendiente = false;   // alguien pidió sincronizar mientras había una en curso
+let ultimosConflictos = [];
 
-function mergeConfig(local, remote){
-  const merged = { ...local };
-  remote.forEach(row => {
-    if(!row[0]) return;
-    const [key, value] = row;
-    if(['sheetsId', 'clientId'].includes(key) && local[key]) return;
-    merged[key] = value;
-  });
-  return merged;
-}
-
-function mergeModalidades(local, remote){
-  const merged = [...local];
-  remote.forEach(r => {
-    if(!r[0]) return;
-    const remoteId = Number(r[0]);
-    if(!local.find(m => m.id === remoteId) && !state.deletedModalidades.includes(remoteId)){
-      merged.push({
-        id: remoteId,
-        nombre: r[1]||'',
-        dias: r[2] ? r[2].split(',').map(Number) : [],
-        hora: r[3]||'',
-        duracion: Number(r[4])||60,
-        color: r[5]||'pink',
-        precioClase: Number(r[6])||0,
-        precioMensual: Number(r[7])||0,
-        precioBimestral: Number(r[8])||0
-      });
-    }
-  });
-  return merged;
-}
-
-function mergePromociones(local, remote){
-  const merged = [...local];
-  remote.forEach(r => {
-    if(!r[0]) return;
-    const remoteId = Number(r[0]);
-    const remotePromo = { id: remoteId, nombre: r[1]||'', valor: r[2]||'' };
-    if(!local.find(p => p.id === remoteId) && !state.deletedPromociones.includes(remoteId)){
-      merged.push(remotePromo);
-    }
-  });
-  return merged;
-}
-
-// ── Sincronización completa bidireccional ──
 async function syncGoogle(auto=false){
   if(!gAccessToken){ return; }
   if(!state.config.sheetsId){ return; }
+  // Si ya hay una sincronización en marcha NO se descarta la petición: se
+  // reintenta al terminar. Antes se ignoraba, así que un cambio hecho mientras
+  // se sincronizaba podía quedarse sin subir hasta la siguiente acción.
+  if(syncEnCurso){ syncPendiente = true; return; }
+  syncEnCurso = true;
 
   const btn = document.getElementById('btn-sync');
   if(btn){ btn.textContent='⏳ Sync...'; btn.disabled=true; }
@@ -3321,130 +3762,154 @@ async function syncGoogle(auto=false){
   try {
     await ensureSheets();
 
-    // ── 1. LEER datos de Sheets (para hacer merge) ──
-    const [alumnosData, pagosData, unifData, asistData, configData, modData, promoData] = await Promise.all([
-      readSheet('Alumnos'),
-      readSheet('Pagos'),
-      readSheet('Uniformes'),
-      readSheet('Asistencia'),
-      readSheet('Configuracion'),
-      readSheet('Modalidades'),
-      readSheet('Promociones')
-    ]);
+    // ── 1. LEER todas las hojas ──
+    const nombres = ENTIDADES.map(e=>e.hoja).concat(['Configuracion','Borrados']);
+    const leidas = await Promise.all(nombres.map(n=>readSheet(n)));
+    const hojas = {};
+    nombres.forEach((n,i)=>{ hojas[n]=leidas[i]||[]; });
 
-    // ── 2. MERGE: combinar datos locales con remotos ──
-    const mergedAlumnos = mergeAlumnos(state.alumnos, alumnosData.slice(1));
-    const mergedPagos = mergePagos(state.pagos, pagosData.slice(1), mergedAlumnos);
-    const mergedUnif = mergeUniformes(state.uniformes, unifData.slice(1), mergedAlumnos);
-    const mergedAsist = mergeAsistencia(state.asistencia, asistData.slice(1), mergedAlumnos);
-    const mergedConfig = mergeConfig(state.config, configData.slice(1));
-    const mergedMod = mergeModalidades(state.modalidades, modData.slice(1));
-    const mergedPromo = mergePromociones(state.promociones, promoData.slice(1));
+    // ── 2. BORRADOS: unión de los locales y los de la hoja ──
+    const borrados = Array.isArray(state.borrados)? [...state.borrados] : [];
+    (hojas['Borrados']||[]).slice(1).forEach(f=>{
+      if(!f || !f[0] || f[1]===undefined || f[1]==='') return;
+      const b={ entidad:String(f[0]), refId:String(f[1]), fecha:String(f[2]||'') };
+      if(!borrados.some(x=>x.entidad===b.entidad && String(x.refId)===b.refId)) borrados.push(b);
+    });
 
-    // ── 3. GUARDAR merge en state local ──
-    state.alumnos = mergedAlumnos;
-    state.pagos = mergedPagos;
-    state.uniformes = mergedUnif;
-    state.asistencia = mergedAsist;
-    state.config = mergedConfig;
-    state.modalidades = mergedMod;
-    state.promociones = mergedPromo;
-    save('alumnos');
-    save('pagos');
-    save('uniformes');
-    save('asistencia');
+    // ── 3. MEZCLA (alumnos primero: el resto resuelve nombres con ellos) ──
+    const base = DB.get('syncBase') || {};
+    const conflictos = [];
+    const ctx = { alumnos: [] };
+
+    const defAlumnos = entidadPorClave('alumnos');
+    const resAlumnos = mezclarEntidad(defAlumnos, state.alumnos, parsearHoja(defAlumnos, hojas['Alumnos'], ctx), base.alumnos, ctx);
+    state.alumnos = aplicarBorrados(resAlumnos.datos, 'alumnos', borrados);
+    conflictos.push(...resAlumnos.conflictos);
+    ctx.alumnos = state.alumnos;
+
+    ENTIDADES.filter(e=>e.clave!=='alumnos').forEach(def=>{
+      const remoto = parsearHoja(def, hojas[def.hoja], ctx);
+      const res = mezclarEntidad(def, state[def.clave], remoto, base[def.clave], ctx);
+      state[def.clave] = aplicarBorrados(res.datos, def.clave, borrados);
+      conflictos.push(...res.conflictos);
+    });
+
+    state.borrados = borrados;
+    state.asistencia = normalizarAsistencia(state.asistencia);
+    state.config = mergeConfig(state.config, (hojas['Configuracion']||[]).slice(1), base.config);
+
+    // ── 4. GUARDAR en el dispositivo ──
+    ENTIDADES.forEach(def=>save(def.clave));
+    save('borrados');
     save('config');
-    save('modalidades');
-    save('promociones');
 
-    // ── 4. SUBIR merge a Sheets ──
-    const alumnosRows = state.alumnos.map(a=>[
-      a.id, a.nombre, a.telefono||'', a.email||'', a.nacimiento||'',
-      a.modalidad||'', a.tipoPago||'', a.ingreso||'', a.estado||'activa', a.notas||''
-    ]);
-    await writeSheet('Alumnos',
-      ['ID','Nombre','Teléfono','Email','Nacimiento','Modalidad','Tipo pago','Ingreso','Estado','Notas'],
-      alumnosRows
-    );
+    // ── 5. SUBIR todo a Sheets ──
+    for(const def of ENTIDADES){
+      await writeSheet(def.hoja, def.cabeceras, (state[def.clave]||[]).map(def.aFila));
+    }
+    await writeSheet('Configuracion', ['Clave','Valor'], Object.entries(state.config).map(([k,v])=>[k,v]));
+    await writeSheet('Borrados', ['Entidad','RefID','Fecha'], borrados.map(b=>[b.entidad,b.refId,b.fecha]));
 
-    const pagosRows = state.pagos.map(p=>{
-      return [
-        p.id, nombreAlumna(p.alumnaId,p.alumnaNombre), p.conceptoLabel||p.concepto||'',
-        p.periodo||'', p.montoPagado||0, p.promoNombre||'',
-        p.fecha||'', p.metodo||'', p.notas||''
-      ];
-    });
-    await writeSheet('Pagos',
-      ['ID','Alumna','Concepto','Período','Monto','Promoción','Fecha','Método','Notas'],
-      pagosRows
-    );
+    // ── 6. GUARDAR LA BASE (estado tras un sync correcto) ──
+    const nuevaBase = {};
+    ENTIDADES.forEach(def=>{ nuevaBase[def.clave]=JSON.parse(JSON.stringify(state[def.clave]||[])); });
+    nuevaBase.config = JSON.parse(JSON.stringify(state.config||{}));
+    DB.set('syncBase', nuevaBase);
 
-    const unifRows = state.uniformes.map(u=>{
-      return [
-        u.id, nombreAlumna(u.alumnaId,u.alumnaNombre), u.piezas?.map(p=>p.nombre).join(', ')||'',
-        u.total||0, u.pago1||0, u.fecha1||'', u.pago2||0, u.fechaLiq||'', u.estado||''
-      ];
-    });
-    await writeSheet('Uniformes',
-      ['ID','Alumna','Piezas','Total','1er pago','Fecha 1er pago','2do pago','Fecha liquidación','Estado'],
-      unifRows
-    );
-
-    const configRows = Object.entries(state.config).map(([k, v]) => [k, v]);
-    await writeSheet('Configuracion', ['Clave', 'Valor'], configRows);
-
-    const modRows = state.modalidades.map(m=>[
-      m.id, m.nombre, m.dias?.join(','), m.hora, m.duracion, m.color, m.precioClase, m.precioMensual, m.precioBimestral
-    ]);
-    await writeSheet('Modalidades', ['ID','Nombre','Días','Hora','Duración','Color','precioClase','precioMensual','precioBimestral'], modRows);
-
-    const promoRows = state.promociones.map(p=>[p.id, p.nombre, p.valor]);
-    await writeSheet('Promociones', ['ID','Nombre','Valor'], promoRows);
-
-    // La asistencia se exporta desde el array normalizado (antes se recorría como
-    // objeto anidado, lo que producía filas basura como ["0","fecha",...]).
-    const asistRows = asistenciaActual().map(r=>{
-      return [
-        r.fecha,
-        claseDeAsistencia(r.fecha, r.alumnaId, r.clase),
-        nombreAlumna(r.alumnaId, r.alumnaNombre),
-        r.alumnaId,
-        r.estado
-      ];
-    });
-    await writeSheet('Asistencia',
-      ['Fecha','Clase','Alumna','AlumnaID','Status'],
-      asistRows
-    );
-
-    // ── 5. Actualizar UI ──
-    if(!auto) toast('✅ Sincronizado con Google Sheets');
-
-    const ts = new Date().toLocaleString('es-MX');
-    const el = document.getElementById('google-status');
-    if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
-
-    // Actualizar vistas con datos mergeados
+    // ── 7. ACTUALIZAR LA INTERFAZ ──
     if(typeof renderAlumnos === 'function') renderAlumnos();
     if(typeof renderPagosMes === 'function') renderPagosMes();
     if(typeof renderHistorialPagos === 'function') renderHistorialPagos();
     if(typeof renderUniformes === 'function') renderUniformes();
+    if(typeof renderPiezas === 'function') renderPiezas();
+    if(typeof renderNotas === 'function') renderNotas();
     if(typeof renderDashboard === 'function') renderDashboard();
+    if(typeof renderListaAsistencia === 'function'){
+      poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia();
+    }
 
-    // ── 6. Limpiar listas de eliminaciones después de sync exitoso ──
-    state.deletedAlumnos = [];
-    state.deletedPagos = [];
-    state.deletedUniformes = [];
-    saveDeleted('deletedAlumnos');
-    saveDeleted('deletedPagos');
-    saveDeleted('deletedUniformes');
+    const ts = new Date().toLocaleString('es-MX');
+    const el = document.getElementById('google-status');
+    if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
+    if(!auto) toast('✅ Sincronizado con Google Sheets');
+
+    // ── 8. AVISAR DE CONFLICTOS ──
+    ultimosConflictos = conflictos;
+    if(conflictos.length) mostrarConflictos(conflictos);
 
   } catch(e){
     console.error('Sync error:', e);
-    if(!auto) toast('Error al sincronizar: '+e.message, 'error');
+    toast('Error al sincronizar: '+e.message, 'error');
   } finally {
+    syncEnCurso = false;
     if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
+    // Si alguien pidió sincronizar mientras estábamos, se hace ahora
+    if(syncPendiente){
+      syncPendiente = false;
+      setTimeout(function(){ syncGoogle(true); }, 60);
+    }
   }
+}
+
+// ── Aviso de conflictos ──
+// Aparece solo cuando el mismo registro cambió a la vez aquí y en otro
+// dispositivo. Por defecto se conserva lo de este dispositivo.
+function mostrarConflictos(conflictos){
+  let modal=document.getElementById('modal-conflicto');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.className='modal-overlay';
+    modal.id='modal-conflicto';
+    modal.innerHTML=
+      '<div class="modal" style="max-width:520px">'+
+        '<div class="modal-header"><span class="modal-title">Cambios en dos dispositivos</span>'+
+        '<button class="modal-close" id="conflicto-cerrar">✕</button></div>'+
+        '<div class="modal-body">'+
+          '<p style="font-size:13.5px;color:var(--gray-600);margin-bottom:14px">'+
+            'Estos registros se modificaron aquí y en otro dispositivo. Se conservó la versión de <strong>este</strong> dispositivo. '+
+            'Si prefieres la del otro, pulsa «Usar la del otro dispositivo».</p>'+
+          '<div id="conflicto-lista" style="max-height:220px;overflow:auto;border:1px solid var(--gray-100);border-radius:var(--radius-sm);padding:10px;font-size:13px"></div>'+
+          '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap">'+
+            '<button class="btn btn-outline" id="conflicto-mio">Conservar el mío</button>'+
+            '<button class="btn btn-primary" id="conflicto-suyo">Usar la del otro dispositivo</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(modal);
+    const cerrar=()=>{ modal.classList.remove('open'); };
+    modal.querySelector('#conflicto-cerrar').onclick=cerrar;
+    modal.querySelector('#conflicto-mio').onclick=()=>{ cerrar(); toast('Se conservaron los cambios de este dispositivo'); };
+    modal.querySelector('#conflicto-suyo').onclick=()=>{
+      aplicarConflictosRemotos(ultimosConflictos);
+      cerrar();
+    };
+  }
+  const lista=modal.querySelector('#conflicto-lista');
+  lista.innerHTML='';
+  (ultimosConflictos||[]).forEach(c=>{
+    const d=document.createElement('div');
+    d.style.padding='6px 0';
+    d.style.borderBottom='1px solid var(--gray-100)';
+    d.textContent='• '+c.etiqueta;
+    lista.appendChild(d);
+  });
+  modal.classList.add('open');
+}
+
+// Sustituye los registros en conflicto por la versión del otro dispositivo
+function aplicarConflictosRemotos(lista){
+  (lista||[]).forEach(c=>{
+    const def=entidadPorClave(c.entidad); if(!def) return;
+    const arr=state[def.clave]||[];
+    const i=arr.findIndex(x=>String(def.claveDe(x))===String(c.clave));
+    if(i>=0) arr[i]=c.remoto;
+  });
+  ENTIDADES.forEach(def=>save(def.clave));
+  renderAlumnos(); renderDashboard(); renderPagosMes(); renderHistorialPagos();
+  renderUniformes(); renderNotas();
+  if(typeof renderListaAsistencia === 'function') renderListaAsistencia();
+  toast('Se adoptaron los cambios del otro dispositivo');
+  syncGoogle(true);
 }
 
 // ── Crear hojas si no existen ──
@@ -3452,7 +3917,7 @@ async function ensureSheets(){
   const sid = state.config.sheetsId;
   const info = await sheetsRequest('GET', '/'+sid+'?fields=sheets.properties.title');
   const existentes = (info.sheets||[]).map(s=>s.properties.title);
-  const necesarias = ['Alumnos','Pagos','Uniformes','Asistencia', 'Configuracion', 'Modalidades', 'Promociones'];
+  const necesarias = ENTIDADES.map(e=>e.hoja).concat(['Configuracion','Borrados']);
   const faltantes = necesarias.filter(n=>!existentes.includes(n));
 
   if(faltantes.length){
@@ -3461,47 +3926,42 @@ async function ensureSheets(){
   }
 }
 
-// ══════════════════════════════════════
+// ══════════════════════════════════════════
 // IMPORTAR DESDE GOOGLE SHEETS
-// ══════════════════════════════════════
+// ══════════════════════════════════════════
 async function importarDesdeSheets(){
   if(!gAccessToken){ googleSignIn(); return; }
   if(!state.config.sheetsId){ toast('Configura el Sheet ID primero','error'); return; }
-  
-  customConfirm('¿Importar datos desde Google Sheets? Esto reemplazará los datos locales de Alumnos y Pagos.', async ()=>{
+
+  customConfirm('¿Importar datos desde Google Sheets? Esto reemplazará los datos locales de este dispositivo con los de la hoja.', async ()=>{
     try {
       toast('⏳ Importando desde Sheets...');
-      
-      // Importar Alumnos
-      const alumnosData = await readSheet('Alumnos');
-      if(alumnosData.length > 1){
-        state.alumnos = alumnosData.slice(1).filter(r=>r[0]).map(r=>({
-          id: Number(r[0])||Date.now(),
-          nombre: r[1]||'', telefono: r[2]||'', email: r[3]||'',
-          nacimiento: r[4]||'', modalidad: r[5]||'', tipoPago: r[6]||'mensual',
-          ingreso: r[7]||'', estado: r[8]||'activa', notas: r[9]||''
-        }));
-        save('alumnos');
+      const defAlumnos = entidadPorClave('alumnos');
+      const ctx = { alumnos: [] };
+      state.alumnos = parsearHoja(defAlumnos, await readSheet('Alumnos'), ctx);
+      if(!state.alumnos.length) state.alumnos = [];
+      ctx.alumnos = state.alumnos;
+      for(const def of ENTIDADES.filter(e=>e.clave!=='alumnos')){
+        const filas = await readSheet(def.hoja);
+        state[def.clave] = parsearHoja(def, filas, ctx);
+        if(def.clave==='asistencia') state.asistencia = normalizarAsistencia(state.asistencia);
       }
-      
-      // Importar Pagos
-      const pagosData = await readSheet('Pagos');
-      if(pagosData.length > 1){
-        state.pagos = pagosData.slice(1).filter(r=>r[0]).map(r=>{
-          const a = state.alumnos.find(x=>x.nombre===r[1]);
-          return {
-            id: Number(r[0])||Date.now(),
-            alumnaId: a?a.id:0,
-            conceptoLabel: r[2]||'', concepto: r[2]||'',
-            periodo: r[3]||'', montoPagado: Number(r[4])||0,
-            promoNombre: r[5]||'', fecha: r[6]||'',
-            metodo: r[7]||'', notas: r[8]||''
-          };
-        });
-        save('pagos');
-      }
-      
-      renderAlumnos(); renderDashboard();
+      // En una importación completa manda la hoja, salvo las credenciales del dispositivo
+      const cfg = await readSheet('Configuracion');
+      const Rcfg={};
+      (cfg||[]).slice(1).forEach(row=>{ if(row && row[0]) Rcfg[String(row[0])]=row[1]; });
+      state.config = Object.assign({}, state.config, Rcfg, {
+        clientId: state.config.clientId, sheetsId: state.config.sheetsId
+      });
+      // Reiniciar la base: a partir de ahora este dispositivo parte de lo importado
+      const base = {};
+      ENTIDADES.forEach(def=>{ base[def.clave]=JSON.parse(JSON.stringify(state[def.clave]||[])); });
+      DB.set('syncBase', base);
+      ENTIDADES.forEach(def=>save(def.clave));
+      save('config');
+      renderAlumnos(); renderDashboard(); renderPagosMes(); renderUniformes();
+      renderNotas(); renderPiezas();
+      if(typeof renderListaAsistencia === 'function'){ poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia(); }
       toast('✅ Datos importados desde Google Sheets');
     } catch(e){
       toast('Error al importar: '+e.message, 'error');
@@ -3607,6 +4067,37 @@ function abrirModalPago(){
   openModal('modal-pago');
 }
 
+// ══ ACCIONES DELEGADAS ══
+// Los botones que se generan como texto HTML ya no llevan onclick="": en su
+// lugar marcan data-accion y data-id, y un único escucha en document los atiende.
+// Así el HTML generado no depende de funciones globales ni de comillas.
+function atenderAccion(accion, id, datos){
+  switch(accion){
+    case 'pagoRapido':      pagoRapido(id); break;
+    case 'eliminarPieza':   eliminarPieza(id); break;
+    case 'eliminarNota':    eliminarNota(id); break;
+    case 'eliminarPromo':   eliminarPromo(id); break;
+    case 'gestionClase':    abrirGestionClase(id, datos.dia, datos.hora); break;
+    case 'verEventoClase':  verEventoClase(id); break;
+    case 'calNavegar':      calNavegar(id); break;
+    case 'calIrHoy':        calIrHoy(); break;
+    case 'calVista':        cambiarVistaCalendario(id); break;
+    case 'calDia':          abrirDiaCalendario(id); break;
+    default: console.warn('Acción desconocida:', accion);
+  }
+}
+
+document.addEventListener('click', function(e){
+  const el = e.target && e.target.closest ? e.target.closest('[data-accion]') : null;
+  if(!el) return;
+  const accion = el.getAttribute('data-accion');
+  const bruto  = el.getAttribute('data-id');
+  const id     = bruto===null ? undefined : (isNaN(Number(bruto)) ? bruto : Number(bruto));
+  const hora   = el.getAttribute('data-hora');
+  const dia    = el.getAttribute('data-dia');
+  atenderAccion(accion, id, { dia: dia===null ? undefined : Number(dia), hora: hora || undefined });
+});
+
 // ══ CONFIRMACIÓN PROPIA (reemplaza confirm() del browser) ══
 function customConfirm(msg, onOk){
   const confirmBtn = document.getElementById('confirm-btn-ok');
@@ -3625,6 +4116,28 @@ function customConfirm(msg, onOk){
 }
 
 (function init(){
+  // ── Migración v1.5.0: unificar los borrados pendientes ──
+  // Las listas deletedX eran locales y nunca se subían a la hoja, así que lo
+  // borrado en un dispositivo reaparecía en los demás. Se pasan a `borrados`,
+  // que sí se sincroniza, para no perder los borrados que quedaron pendientes.
+  (function migrarBorrados(){
+    let cambios=false;
+    const mapa={ deletedAlumnos:'alumnos', deletedPagos:'pagos', deletedUniformes:'uniformes',
+                 deletedAsistencia:'asistencia', deletedModalidades:'modalidades', deletedPromociones:'promociones' };
+    if(!Array.isArray(state.borrados)) state.borrados=[];
+    Object.entries(mapa).forEach(([lista,entidad])=>{
+      const ids=Array.isArray(state[lista])?state[lista]:[];
+      ids.forEach(id=>{
+        if(!state.borrados.some(b=>b.entidad===entidad && String(b.refId)===String(id))){
+          state.borrados.push({ entidad, refId:String(id), fecha:new Date().toISOString() });
+          cambios=true;
+        }
+      });
+      if(ids.length){ state[lista]=[]; DB.set(lista, []); cambios=true; }
+    });
+    if(cambios) save('borrados');
+  })();
+
   // ── Migración v1.2.0: guardar el nombre de la alumna dentro de pagos y uniformes ──
   // Así esos registros siguen siendo legibles aunque la alumna se elimine después.
   // (No puede recuperar el nombre de alumnas ya borradas antes de esta versión:
@@ -3675,7 +4188,7 @@ function customConfirm(msg, onOk){
   if(fechaAsist) fechaAsist.addEventListener('change',()=>renderListaAsistencia());
 })();
 </script>
-/
+
   <!-- Modal de confirmación -->
   <div class="modal-overlay" id="modal-confirm">
     <div class="modal" style="max-width:400px">
