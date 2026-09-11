@@ -1047,7 +1047,7 @@ textarea{resize:vertical;min-height:80px}
         <div class="form-group full">
           <label>Alumna *</label>
           <!-- Modo selector (cuando se abre desde Pagos) -->
-          <select id="p-alumna" style="display:block"></select>
+          <select id="p-alumna" style="display:block" onchange="onAlumnaChangePago()"></select>
           <!-- Modo fijo (cuando viene de botón 💳 de una alumna) -->
           <div id="p-alumna-fija" style="display:none;padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:13.5px;display:none;align-items:center;justify-content:space-between">
             <span id="p-alumna-nombre" style="font-weight:500;color:var(--gray-800)"></span>
@@ -1619,7 +1619,13 @@ let calVista = 'mes';        // 'mes' | 'semana' | 'dia'
 let calFecha = new Date();   // fecha de referencia de la vista
 
 const MESES_LARGOS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const DIAS_LETRA=['D','L','M','M','J','V','S'];                       // por getDay(): 0=domingo
+// El calendario del mes pinta la semana empezando en LUNES (igual que la vista
+// de semana), así que las columnas van L M M J V S D. Antes este array empezaba
+// en domingo mientras el desplazamiento se calculaba para lunes: cada fecha
+// caía una columna a la izquierda y, por ejemplo, el viernes 11/09/2026 salía
+// bajo la "J" de jueves, descuadrando todas las clases.
+const DIAS_LETRA=['L','M','M','J','V','S','D'];                       // columnas del mes
+const DIAS_LETRA_DIA=['D','L','M','M','J','V','S'];                   // indexado por getDay(): 0=domingo
 const DIAS_NOMBRE=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 
 function aISO(f){ return f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0'); }
@@ -1778,7 +1784,7 @@ function vistaSemana(){
     const esHoy=mismoDia(f,ahora);
     h+='<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--gray-50)">';
     h+='<div style="width:34px;flex-shrink:0;text-align:center">'+
-         '<div style="font-size:10px;color:var(--gray-400);text-transform:uppercase">'+DIAS_LETRA[f.getDay()]+'</div>'+
+         '<div style="font-size:10px;color:var(--gray-400);text-transform:uppercase">'+DIAS_LETRA_DIA[f.getDay()]+'</div>'+
          '<div style="font-size:15px;font-weight:'+(esHoy?'600':'500')+';color:'+(esHoy?'var(--pink)':'var(--gray-800)')+'">'+f.getDate()+'</div>'+
        '</div>';
     h+='<div style="flex:1;min-width:0">'+
@@ -1896,8 +1902,7 @@ function renderAlumnos(){
   tbody.innerHTML='';
   lista.forEach(a=>{
     const pagado=state.pagos.some(p=>{ const d=new Date(p.fecha+'T12:00:00'); return p.alumnaId==a.id&&d.getMonth()===mes&&d.getFullYear()===anio });
-    const cfg=state.config;
-    const precio=a.tipoPago==='mensual'?cfg.precioMensual:a.tipoPago==='bimestral'?cfg.precioBimestral:cfg.precioClase;
+    const precio=precioDeAlumna(a);
     const stColor={activa:'#16a34a',baja:'#ea580c',inactiva:'#dc2626'}[a.estado]||'#888';
     const stLabel={activa:'Activa',baja:'Baja temp.',inactiva:'Inactiva'}[a.estado]||a.estado;
     const tr=document.createElement('tr');
@@ -2038,29 +2043,47 @@ function eliminarAlumno(id){
   });
 }
 
+// El concepto sale de cómo está registrada la alumna (Alumnos → Tipo de pago),
+// así que al elegirla ya viene puesto y no hay que seleccionarlo a mano.
+function conceptoDeTipoPago(tipoPago){
+  return tipoPago==='bimestral' ? 'bimestral' : tipoPago==='clase' ? 'clase' : 'mensual';
+}
+
+function onAlumnaChangePago(){
+  const sel=document.getElementById('p-alumna'); if(!sel) return;
+  const alumna=state.alumnos.find(a=>Number(a.id)===Number(sel.value));
+  const concepto=document.getElementById('p-concepto');
+  if(concepto && alumna) concepto.value=conceptoDeTipoPago(alumna.tipoPago);
+  onConceptoChange();
+}
+
 function pagoRapido(alumnaId){
   populateAlumnaSelects();
   poblarSelectPromocion();
-  const a=state.alumnos.find(x=>x.id===alumnaId);
+  const a=state.alumnos.find(x=>Number(x.id)===Number(alumnaId));
   // Guardar alumnaId en variable global para pago rápido
   currentAlumnoId = alumnaId;
-  // Preseleccionar alumna en el select (por si acaso)
+  document.getElementById('p-alumna-nombre').textContent=a?a.nombre:'—';
+  const now=new Date();
+  document.getElementById('p-fecha').value=now.toISOString().split('T')[0];
+  // Abrir PRIMERO. openModal('modal-pago') vuelve a rellenar el <select> de
+  // alumnas, así que si la alumna se fijaba antes, se perdía y el importe
+  // sugerido salía en $0. Ahora se fija todo después de abrir.
+  openModal('modal-pago');
   document.getElementById('p-alumna').value=alumnaId;
   // Mostrar modo "alumna fija" - ocultar select, mostrar nombre
   document.getElementById('p-alumna').style.display='none';
   const fija=document.getElementById('p-alumna-fija');
-  fija.style.display='flex';
-  document.getElementById('p-alumna-nombre').textContent=a?a.nombre:'—';
-  const now=new Date();
-  document.getElementById('p-fecha').value=now.toISOString().split('T')[0];
-  const concepto=a?.tipoPago==='mensual'?'mensual':a?.tipoPago==='bimestral'?'bimestral':'clase';
-  document.getElementById('p-concepto').value=concepto;
-  setTimeout(()=>onConceptoChange(),50);
-  openModal('modal-pago');
+  if(fija) fija.style.display='flex';
+  document.getElementById('p-concepto').value=conceptoDeTipoPago(a&&a.tipoPago);
+  onConceptoChange();
 }
 
 function mostrarSelectorAlumna(){
   // Permitir cambiar la alumna - volver al select normal
+  // Se suelta la alumna fija: si no, al guardar seguiría usando la anterior
+  // aunque se hubiera elegido otra en el selector.
+  currentAlumnoId = null;
   document.getElementById('p-alumna').style.display='block';
   document.getElementById('p-alumna-fija').style.display='none';
 }
@@ -2181,8 +2204,7 @@ function renderPagosMes(){
     if(pendientes.length){
       banner.style.display='block';
       listaP.innerHTML=pendientes.map(a=>{
-        const cfg=state.config;
-        const precio=a.tipoPago==='mensual'?cfg.precioMensual:a.tipoPago==='bimestral'?cfg.precioBimestral:cfg.precioClase;
+        const precio=precioDeAlumna(a);
         return '<span style="display:inline-flex;align-items:center;gap:6px;background:white;border:1px solid var(--gray-200);border-radius:20px;padding:4px 10px;margin:3px;font-size:12px;cursor:pointer" data-accion="pagoRapido" data-id="'+a.id+'">'+
           esc(a.nombre)+' <span style="color:var(--green);font-weight:600">$'+Number(precio||0).toLocaleString('es-MX')+'</span> <span style="color:var(--pink)">+ cobrar</span></span>';
       }).join('');
@@ -2225,7 +2247,7 @@ function renderPendientes(){
   });
   if(!pendientes.length){ el.innerHTML=`<div class="empty-state"><div class="empty-icon">🎉</div><p>¡Todas las alumnas activas han pagado este mes!</p></div>`; return; }
   el.innerHTML=pendientes.map(a=>{
-    const cfg=state.config; const precio=a.tipoPago==='mensual'?cfg.precioMensual:a.tipoPago==='bimestral'?cfg.precioBimestral:cfg.precioClase;
+    const precio=precioDeAlumna(a);
     return `<div class="asist-row"><div><div class="asist-name">${esc(a.nombre)}</div><div style="font-size:12px;color:var(--gray-400)">${esc(a.modalidad||'')} · $${Number(precio||0).toLocaleString('es-MX')}</div></div><button class="btn btn-primary btn-sm" data-accion="pagoRapido" data-id="${a.id}">💳 Cobrar</button></div>`;
   }).join('');
 }
@@ -3136,6 +3158,35 @@ function poblarSelectPeriodo(){
   sel.value=[...sel.options].some(o=>o.value===previo)?previo:porDefecto;
 }
 
+// La modalidad de una alumna y su precio por concepto. Es la MISMA fuente de
+// verdad que se guarda en la hoja Modalidades, así que el importe sugerido
+// sobrevive a un sync con otro dispositivo.
+function modalidadDeAlumna(alumna){
+  if(!alumna) return null;
+  return (state.modalidades||[]).find(m=>m.nombre===alumna.modalidad) || null;
+}
+function precioDeModalidad(mod, concepto){
+  if(!mod) return 0;
+  const v = concepto==='bimestral' ? mod.precioBimestral
+          : concepto==='clase' ? mod.precioClase
+          : mod.precioMensual;
+  return Number(v)||0;
+}
+// Precio que le toca a una alumna según su modalidad y su tipo de pago.
+// Antes esto se leía de state.config.precioMensual/Bimestral/Clase, que ya no
+// existen (los precios viven en cada modalidad desde que se migraron), así que
+// la columna "Precio" de Alumnos y los avisos de pago pendiente salían en $0.
+function precioDeAlumna(a){
+  if(!a) return 0;
+  const porModalidad=precioDeModalidad(modalidadDeAlumna(a), a.tipoPago);
+  if(porModalidad) return porModalidad;
+  const c=state.config||{};
+  const v = a.tipoPago==='bimestral' ? c.precioBimestral
+          : a.tipoPago==='clase' ? c.precioClase
+          : c.precioMensual;
+  return Number(v)||0;
+}
+
 function onConceptoChange(){
   const concepto=document.getElementById('p-concepto').value;
   const otroGrupo=document.getElementById('p-otro-grupo');
@@ -3144,22 +3195,25 @@ function onConceptoChange(){
   if(otroGrupo) otroGrupo.style.display=concepto==='otro'?'flex':'none';
 
   let monto=0; let label='';
-  const alumnaId=document.getElementById('p-alumna').value;
-  const alumna=state.alumnos.find(a=>a.id===alumnaId);
-  const modSugerida=alumna?state.modalidades.find(m=>m.nombre===alumna.modalidad):null;
+  // El value de un <select> siempre es texto: hay que comparar como número. Con
+  // === no coincidía nunca, así que no se encontraba la alumna y el importe
+  // sugerido salía siempre en $0.
+  const alumnaId=Number(document.getElementById('p-alumna').value);
+  const alumna=state.alumnos.find(a=>Number(a.id)===alumnaId);
+  const modSugerida=modalidadDeAlumna(alumna);
 
   if(concepto==='mensual'){
-    monto=modSugerida ? modSugerida.precioMensual : 0;
+    monto=precioDeModalidad(modSugerida,'mensual');
     label=modSugerida ? 'Precio Mensual de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
   else if(concepto==='bimestral'){
-    monto=modSugerida ? modSugerida.precioBimestral : 0;
+    monto=precioDeModalidad(modSugerida,'bimestral');
     label=modSugerida ? 'Precio Bimestral de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
   else if(concepto==='clase'){
-    monto=modSugerida ? modSugerida.precioClase : 0;
+    monto=precioDeModalidad(modSugerida,'clase');
     label=modSugerida ? 'Precio de Clase Suelta de la modalidad' : 'Sugerencia: 0';
     montoEl.readOnly=true; montoEl.style.background='var(--gray-50)';
   }
@@ -3656,19 +3710,30 @@ const ENTIDADES = [
     clave:'modalidades', hoja:'Modalidades',
     claveDe: x=>x && x.id,
     etiqueta: x=>'Modalidad «'+((x&&x.nombre)||'?')+'»',
-    // La app usa un único precio; antes la hoja guardaba tres columnas de precio
-    // y al leerlas se perdía el precio real de la modalidad.
-    cabeceras:['ID','Nombre','Días','Hora','Duración','Color','Precio'],
-    aFila: x=>[x.id,x.nombre||'',(x.dias||[]).join(','),x.hora||'',x.duracion||60,normalizarColor(x.color),x.precio||0],
-    deFila: (f,m)=>({
-      id:aNumero(celda(f,m,'ID')),
-      nombre:celda(f,m,'Nombre')||'',
-      dias:String(celda(f,m,'Días','Dias')||'').split(',').map(x=>x.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n)),
-      hora:celda(f,m,'Hora')||'',
-      duracion:aNumero(celda(f,m,'Duración','Duracion'),60),
-      color:normalizarColor(celda(f,m,'Color')),
-      precio:aNumero(celda(f,m,'Precio')!==undefined?celda(f,m,'Precio'):celda(f,m,'precioMensual','precioClase','precioBimestral'))
-    })
+    // Una modalidad tiene TRES precios (clase suelta, mensual y bimestral) y son
+    // los que la app usa para sugerir el importe de un pago. Antes la hoja sólo
+    // guardaba una columna 'Precio' que el formulario nunca rellenaba: los tres
+    // precios se quedaban en el navegador y no llegaban nunca a Google Sheets.
+    cabeceras:['ID','Nombre','Días','Hora','Duración','Color','Precio','Precio clase','Precio mensual','Precio bimestral'],
+    aFila: x=>[x.id,x.nombre||'',(x.dias||[]).join(','),x.hora||'',x.duracion||60,normalizarColor(x.color),
+               x.precio||0,x.precioClase||0,x.precioMensual||0,x.precioBimestral||0],
+    deFila: (f,m)=>{
+      const clase=aNumero(celda(f,m,'Precio clase','precioClase'));
+      const mensual=aNumero(celda(f,m,'Precio mensual','precioMensual'));
+      const bimestral=aNumero(celda(f,m,'Precio bimestral','precioBimestral'));
+      return {
+        id:aNumero(celda(f,m,'ID')),
+        nombre:celda(f,m,'Nombre')||'',
+        dias:String(celda(f,m,'Días','Dias')||'').split(',').map(x=>x.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n)),
+        hora:celda(f,m,'Hora')||'',
+        duracion:aNumero(celda(f,m,'Duración','Duracion'),60),
+        color:normalizarColor(celda(f,m,'Color')),
+        precioClase:clase, precioMensual:mensual, precioBimestral:bimestral,
+        // 'Precio' es la columna antigua; se conserva como respaldo para no
+        // perder el importe en hojas que ya existían.
+        precio:aNumero(celda(f,m,'Precio')) || mensual || clase || bimestral || 0
+      };
+    }
   },
   {
     clave:'promociones', hoja:'Promociones',
@@ -3828,6 +3893,15 @@ async function syncGoogle(auto=false){
       cambioLocal[def.clave] = (base && base[def.clave]) ? !iguales(state[def.clave], base[def.clave]) : false;
     });
 
+    // Las columnas de precio de la modalidad son nuevas en v1.6.3. Si la hoja
+    // todavía no las tiene y aquí sí hay precios, hay que subir Modalidades una
+    // vez para que se creen las columnas y los precios queden guardados en
+    // Google (si no, se quedarían sólo en este dispositivo para siempre).
+    const cabModalidades = (hojas['Modalidades']||[])[0] || [];
+    const hojaTieneColumnasDePrecio = cabModalidades.some(h=>/^precio\s+(clase|mensual|bimestral)$/i.test(String(h||'').trim()));
+    const localTienePrecios = (state.modalidades||[]).some(m=>m.precioClase||m.precioMensual||m.precioBimestral);
+    if(!hojaTieneColumnasDePrecio && localTienePrecios) cambioLocal.modalidades = true;
+
     // ── 3. BORRADOS: unión de los locales y los de la hoja ──
     const borrados = Array.isArray(state.borrados)? [...state.borrados] : [];
     (hojas['Borrados']||[]).slice(1).forEach(f=>{
@@ -3858,6 +3932,24 @@ async function syncGoogle(auto=false){
         : mezclarEntidad(def, state[def.clave], remoto, base&&base[def.clave], ctx);
       state[def.clave] = aplicarBorrados(res.datos, def.clave, borrados);
       conflictos.push(...res.conflictos);
+    });
+
+    // Una hoja que todavía no tiene las columnas de precio devuelve 0, y la
+    // mezcla lo interpretaría como "el otro dispositivo los puso a cero". Como
+    // "cero" y "sin dato" son indistinguibles ahí, se conservan los precios que
+    // ya había en este dispositivo.
+    state.modalidades = (state.modalidades||[]).map(m=>{
+      const previa = (antes.modalidades||[]).find(x=>String(x.id)===String(m.id));
+      if(!previa) return m;
+      const remotoSinPrecios = !m.precioClase && !m.precioMensual && !m.precioBimestral && !m.precio;
+      const localConPrecios  = previa.precioClase || previa.precioMensual || previa.precioBimestral || previa.precio;
+      if(remotoSinPrecios && localConPrecios){
+        return Object.assign({}, m, {
+          precioClase:previa.precioClase||0, precioMensual:previa.precioMensual||0,
+          precioBimestral:previa.precioBimestral||0, precio:previa.precio||0
+        });
+      }
+      return m;
     });
 
     state.borrados = borrados;
@@ -4201,9 +4293,14 @@ function abrirModalPago(){
   document.getElementById('p-alumna').value='';
   const fija=document.getElementById('p-alumna-fija');
   if(fija) fija.style.display='none';
-  // Resetear concepto y monto
+  // Resetear concepto y monto: al abrir sin alumna el concepto vuelve a
+  // Mensualidad, y en cuanto se elija una alumna lo pone ella sola.
   const now=new Date();
   document.getElementById('p-fecha').value=now.toISOString().split('T')[0];
+  const conceptoEl=document.getElementById('p-concepto');
+  if(conceptoEl) conceptoEl.value='mensual';
+  currentAlumnoId=null;
+  onConceptoChange();
   openModal('modal-pago');
 }
 
@@ -4299,12 +4396,21 @@ function customConfirm(msg, onOk){
     }
   })();
 
-  // Migración de precios globales a modalidades
-  if (state.config && state.config.precioMensual) {
-    const defaultPrice = state.config.precioMensual;
+  // Migración de precios globales a modalidades.
+  // Los tres precios globales se mudan a cada modalidad ANTES de borrarlos: si
+  // sólo se borraban (como antes), los precios configurados se perdían sin
+  // llegar nunca a la modalidad ni, por tanto, a la hoja de Google.
+  if (state.config && (state.config.precioMensual || state.config.precioClase || state.config.precioBimestral)) {
+    const gClase = Number(state.config.precioClase) || 0;
+    const gMensual = Number(state.config.precioMensual) || 0;
+    const gBimestral = Number(state.config.precioBimestral) || 0;
+    const defaultPrice = gMensual;
     state.modalidades = state.modalidades.map(m => ({
       ...m,
-      precio: m.precio || defaultPrice
+      precio: m.precio || defaultPrice,
+      precioClase: m.precioClase || gClase,
+      precioMensual: m.precioMensual || gMensual,
+      precioBimestral: m.precioBimestral || gBimestral
     }));
     save('modalidades');
     // Limpiar precios globales
