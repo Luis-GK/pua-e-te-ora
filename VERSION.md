@@ -1,124 +1,120 @@
-# v1.6.0 — Fase 8: calendario con vistas (mes / semana / día)
+# v1.6.2 — Fase 10: propagación rápida entre dispositivos
 
 ## Resumen
 
-El calendario del Dashboard gana un **selector de vista** dentro del propio
-calendario, y deja de ser una plantilla de días de la semana para convertirse en
-un calendario **con las clases reales de cada fecha**.
+En la prueba manual, un cambio tardaba **50 segundos** en verse en el segundo
+dispositivo. No era un fallo intermitente: era el **intervalo de sondeo**. La app
+preguntaba a la hoja cada 60 segundos, así que un cambio podía tardar casi un
+minuto en detectarse.
 
-Cuando un día tiene más de una clase, su aro se divide en tantos segmentos como
-clases, uno por color. Sigue viéndose como hasta ahora, pero ya dice todo lo que
-hay ese día.
+Ahora: **hasta 15 segundos**, y **al instante** en cuanto vuelves a la pestaña.
 
 ## Integridad
 
 | Archivo | Tamaño | SHA-256 (primeros 16) |
 |---|---|---|
-| `index.html` | 434,1 KB | `8B8E6D443528A2F5` |
+| `index.html` | 440,2 KB | `A0C93ED995C80757` |
 | `manifest.json` | 0,5 KB | `17489B0FECE45A31` |
 | `logo.jpg` | 180,9 KB | `5DE65B0C3D118815` |
 
-## 1. Selector de vista, en el propio calendario
+## Reproducido y medido antes de tocar nada
 
-Tres botones **Mes · Semana · Día** justo encima de la rejilla. No hay que ir a
-Configuración. Las flechas ‹ › navegan según la vista activa:
+Escribí una prueba que abre los dos dispositivos a la vez y cronometra. Con
+**v1.6.1**, el mismo escenario que describes:
 
-| Vista | Avanza |
-|---|---|
-| Mes | un mes |
-| Semana | siete días |
-| Día | un día |
+| Escenario | v1.6.1 | v1.6.2 |
+|---|---|---|
+| B visible, eliminación en A | **más de 40 s sin reflejarlo** | **14 989 ms** |
+| B en segundo plano → vuelves a la pestaña | 13 092 ms (por el sondeo, no por volver) | **310 ms** |
+| Peticiones por comprobación | 12 | **2** |
 
-«Hoy» aparece cuando no estás en la fecha actual y te devuelve a ella.
+## Los tres cambios
 
-## 2. El problema de los varios colores por día
+### 1. Comprueba la hoja al volver a la pestaña
 
-La solución es un **aro segmentado**: el círculo del día conserva su tamaño y su
-número, pero el borde se reparte en tantos arcos como clases, un color cada uno.
+Es justo el momento en que vas a mirar los datos. Antes había que esperar al
+siguiente tic del temporizador.
 
-- Con **una** clase se ve exactamente igual que antes (aro liso).
-- Con **dos o tres** se ve un aro partido, sin ocupar un solo píxel más.
-- El número mantiene el color de la primera clase, así que el día se sigue
-  leyendo de un vistazo.
+```js
+document.addEventListener('visibilitychange', alVolverALaPestana);
+window.addEventListener('focus', alVolverALaPestana);
+```
 
-Además, **el detalle ya no vive en el mes**: al pulsar un día se abre su vista de
-Día, con el nombre y la hora de cada clase. Así el mes solo tiene que decir
-«cuántas y de qué colores», no repetirlo todo.
+Con un freno de 3 segundos para no repetir si acabas de cambiar de ventana, y
+**sin sondear nunca con la pestaña en segundo plano** (no gasta cuota ni batería).
 
-> **Alternativas que consideré** y por qué no las elegí:
-> - *Puntos debajo del número*: muy legible, pero añade altura a todas las celdas
->   y en el móvil la rejilla queda apretada.
-> - *Color dominante + contador*: pierde información (no sabes de qué clases).
-> - *Barra fina inferior*: como el aro, pero menos visible.
+> Este es el caso real: tienes la app en el móvil y en el ordenador. Registras
+> algo en el móvil, te vas al ordenador y **al mirarlo ya está ahí**.
 
-Si prefieres cualquiera de ellas, el cambio está acotado a una función
-(`anilloDia` + `celdaDia`).
+### 2. El sondeo cuesta 10 veces menos
 
-## 3. Ahora el calendario dice la verdad
+Antes, cada comprobación leía **las 10 hojas en 10 peticiones**. Ahora usa
+`values:batchGet` y las lee **en una sola**, más la de `ensureSheets`: **2
+peticiones** en total.
 
-Antes coloreaba cualquier día cuyo **día de la semana** tuviera clase: era una
-plantilla semanal, no un calendario. No sabía nada de cancelaciones ni de
-reagendados.
+Eso es lo que permite bajar el intervalo sin arriesgar la cuota de Google.
 
-Ahora `clasesDeFecha()` resuelve, para cada fecha concreta:
+### 3. Intervalo por defecto: de 60 s a 15 s
 
-- las modalidades que tocan ese día de la semana,
-- menos las que tengan una **cancelación** registrada para ese día y hora,
-- más las **reagendadas** cuya fecha nueva sea esa.
-
-Las canceladas aparecen tachadas y en gris, tanto en la semana como en el día.
-El `title` de cada día del mes lista sus clases (por ejemplo
-*«2 clases: 17:00 Hawaiano, 19:00 ORI ONLINE»*).
-
-## 4. Un bug de fondo que encontré al hacerlo
-
-Al reagendar, `nuevaDia` se guardaba como **1–7** (con 7 = domingo), mientras que
-`modalidad.dias` y `evento.dias` usan **0–6** (con 0 = domingo). Consecuencia:
-**una clase reagendada a domingo nunca aparecía** en la rejilla del Horario.
-
-Ahora se guarda en el formato correcto y la lectura tolera los valores antiguos,
-así que los reagendados que ya tuvieras a domingo vuelven a verse.
+Sigue siendo configurable en **Configuración → Google & Respaldo**: nunca, 15 s,
+30 s, 1 min, 5 min o 15 min.
 
 ## Verificación
 
 ```powershell
-cd D:\Flore\Documents\Deepseek\Pua-e
-node versions/v1.6.0/tests/run-tests.mjs      # 38/38
+node versions/v1.6.2/tests/run-tests.mjs      # 33/33
 ```
 
-### Prueba de regresión
+### Prueba de propagación (la que reproduce tu caso)
 
 ```powershell
-$env:PUA_INDEX='D:\Flore\Documents\Deepseek\Pua-e\versions\v1.6.0\index.html'
-node versions/v1.5.2/tests/run-tests.mjs      # 39/39
+node _debug/prueba-propagacion.mjs --version=v1.6.1   # la línea base
+node _debug/prueba-propagacion.mjs --version=v1.6.2   # el arreglo
+```
+
+Deja un registro con tiempos en `_debug/log-propagacion.txt`.
+
+### Prueba activa de dos dispositivos
+
+```powershell
+node _debug/prueba-activa-dos-dispositivos.mjs
+```
+
+Da de alta una alumna, pone otra en inactiva y elimina una tercera, comprobando
+que llegan al otro dispositivo.
+
+### Regresión
+
+```powershell
+$env:PUA_INDEX='D:\Flore\Documents\Deepseek\Pua-e\versions\v1.6.2\index.html'
+node versions/v1.6.1/tests/run-tests.mjs      # 36/36
 Remove-Item Env:\PUA_INDEX
 ```
 
-### Comprobaciones nuevas
+## Nota sobre las herramientas de prueba
 
-| Grupo | Qué verifica |
-|---|---|
-| Vistas | tres botones, abre en mes, se cambia desde el calendario |
-| Navegación | avanza 1 día / 7 días / 1 mes según la vista, y «Hoy» vuelve |
-| Varios colores | hay días con 2 clases y el aro las reparte en segmentos |
-| Detalle | la semana lista con hora, marca los días libres, y el día muestra su fecha |
-| Interacción | los 35 días del mes son pulsables y abren su detalle |
+Dos mejoras en el banco de pruebas, porque la hoja simulada ahora persiste y eso
+hacía que algunas verificaciones fueran reproducibles solo la primera vez:
+
+- `entorno-simulacion/verificar.mjs` **vacía la hoja** antes de comprobar.
+- Las dos hojas simuladas (entorno y banco de pruebas) entienden ya
+  `values:batchGet`.
 
 ## Cómo desplegar
 
 ```powershell
-node tools/publicar.mjs v1.6.0 --dest="C:\ruta\a\tu\clon" --confirm
+node tools/publicar.mjs v1.6.2 --dest="C:\ruta\a\tu\clon" --confirm
 cd C:\ruta\a\tu\clon
 git add index.html manifest.json logo.jpg
-git commit -m "v1.6.0: calendario con vistas mes/semana/dia y aro multicolor"
+git commit -m "v1.6.2: propagacion rapida entre dispositivos"
 git push
 ```
 
 ## Cómo revertir
 
 ```powershell
-node tools/publicar.mjs v1.5.2 --dest="C:\ruta\a\tu\clon" --confirm
+node tools/publicar.mjs v1.6.1 --dest="C:\ruta\a\tu\clon" --confirm
 ```
 
-Revertir es seguro: no hay cambios en el modelo de datos ni en la
-sincronización. Solo vuelve el calendario de una sola vista.
+Revertir es seguro: no hay cambios en el modelo de datos. Solo vuelve a tardar
+hasta un minuto en detectar los cambios.

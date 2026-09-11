@@ -930,6 +930,18 @@ textarea{resize:vertical;min-height:80px}
               <label>Google Client ID</label>
               <input type="text" id="cfg-client-id" placeholder="xxxx.apps.googleusercontent.com" oninput="guardarConfig()">
             </div>
+            <div class="form-group">
+              <label>Buscar cambios en la hoja</label>
+              <select id="cfg-autosync" onchange="guardarConfig()">
+                <option value="0">Nunca (solo manual)</option>
+                <option value="15">Cada 15 segundos</option>
+                <option value="30">Cada 30 segundos</option>
+                <option value="60">Cada minuto</option>
+                <option value="300">Cada 5 minutos</option>
+                <option value="900">Cada 15 minutos</option>
+              </select>
+              <span style="font-size:11px;color:var(--gray-400);margin-top:3px">Recoge lo que se registre desde otro dispositivo</span>
+            </div>
             <div id="google-status" style="font-size:12px;text-align:center;padding:4px 0;min-height:20px"></div>
             <button class="btn btn-primary" onclick="testGoogleConnection()" style="justify-content:center;width:100%">🔗 Conectar con Google</button>
             <button class="btn btn-outline" onclick="googleSignOut()" style="justify-content:center;width:100%;margin-top:6px">🚪 Cerrar sesión Google</button>
@@ -2849,6 +2861,7 @@ function cargarConfig(){
   set('cfg-sheets-id',c.sheetsId); set('cfg-client-id',c.clientId);
   set('cfg-api-key',c.apiKey); set('cfg-nombre',c.nombre);
   set('cfg-telefono',c.telefono); set('cfg-email',c.email); set('cfg-direccion',c.direccion);
+  set('cfg-autosync', String(c.autoSyncSegundos===undefined?15:c.autoSyncSegundos));
   renderListaPromociones();
   renderModalidadesCfg();
 }
@@ -2864,9 +2877,11 @@ function guardarConfig(){
     nombre:document.getElementById('cfg-nombre')?.value||'Pua E Te Ora',
     telefono:document.getElementById('cfg-telefono')?.value||'',
     email:document.getElementById('cfg-email')?.value||'',
-    direccion:document.getElementById('cfg-direccion')?.value||''
+    direccion:document.getElementById('cfg-direccion')?.value||'',
+    autoSyncSegundos: Number(document.getElementById('cfg-autosync')?.value||15)
   };
   save('config');
+  iniciarAutoSync();   // aplicar el intervalo nuevo
   syncGoogle(true);
 }
 
@@ -3291,7 +3306,7 @@ function initGoogle(){
           gUserEmail = u.email||'';
           saveGoogleToken(gAccessToken, gUserEmail, expiryMs);
           setGoogleStatus(true);
-          toast('✅ Conectado como '+gUserEmail);
+          toast('Conectado como '+gUserEmail);
         });
       }
     });
@@ -3328,6 +3343,7 @@ function setGoogleStatus(connected, skipSync=false){
     if(btnLogin) btnLogin.style.display='none';
     if(statusEl) statusEl.innerHTML='<span style="color:var(--green)">✅ Conectado como '+gUserEmail+'</span>';
     startInactivityMonitor(); // Iniciar monitoreo de inactividad
+    iniciarAutoSync();        // Revisar la hoja cada cierto tiempo
     updateSyncBanner(); // Actualizar banners de sync
     // Sincronizar automáticamente al conectarse (si no es skip)
     if(!skipSync && state.config.sheetsId){
@@ -3344,6 +3360,7 @@ function setGoogleStatus(connected, skipSync=false){
     if(statusEl) statusEl.innerHTML='<span style="color:var(--gray-400)">Sin conexión</span>';
     gAccessToken=null; gUserEmail='';
     stopInactivityMonitor(); // Detener monitoreo de inactividad
+    detenerAutoSync();        // Dejar de revisar la hoja
     updateSyncBanner(); // Actualizar banners de sync
   }
 }
@@ -3460,6 +3477,23 @@ async function readSheet(sheetName){
   const sid = state.config.sheetsId;
   const r = await sheetsRequest('GET', '/'+sid+'/values/'+encodeURIComponent(sheetName));
   return r.values || [];
+}
+
+// Lee VARIAS hojas en una sola petición (values:batchGet). Con 10 hojas, el
+// sondeo periódico pasa de 10 peticiones a 1, así que se puede preguntar mucho
+// más a menudo sin gastar cuota.
+async function readSheetsBatch(nombres){
+  const sid = state.config.sheetsId;
+  const lista = nombres || [];
+  const q = lista.map(n=>'ranges='+encodeURIComponent(n)).join('&');
+  const r = await sheetsRequest('GET', '/'+sid+'/values:batchGet?'+q);
+  const out = {};
+  lista.forEach(n=>{ out[n]=[]; });
+  (r.valueRanges||[]).forEach(vr=>{
+    const hoja = String(vr.range||'').split('!')[0].replace(/^'|'$/g,'');
+    if(hoja !== '') out[hoja] = vr.values || [];
+  });
+  return out;
 }
 
 // ── Utilidades de lectura ──
@@ -3751,8 +3785,7 @@ async function syncGoogle(auto=false){
   if(!gAccessToken){ return; }
   if(!state.config.sheetsId){ return; }
   // Si ya hay una sincronización en marcha NO se descarta la petición: se
-  // reintenta al terminar. Antes se ignoraba, así que un cambio hecho mientras
-  // se sincronizaba podía quedarse sin subir hasta la siguiente acción.
+  // reintenta al terminar.
   if(syncEnCurso){ syncPendiente = true; return; }
   syncEnCurso = true;
 
@@ -3764,11 +3797,38 @@ async function syncGoogle(auto=false){
 
     // ── 1. LEER todas las hojas ──
     const nombres = ENTIDADES.map(e=>e.hoja).concat(['Configuracion','Borrados']);
-    const leidas = await Promise.all(nombres.map(n=>readSheet(n)));
-    const hojas = {};
-    nombres.forEach((n,i)=>{ hojas[n]=leidas[i]||[]; });
+    const hojas = await readSheetsBatch(nombres);
+    const hojaVacia = n => (hojas[n]||[]).length < 2;   // solo la fila de cabeceras
 
-    // ── 2. BORRADOS: unión de los locales y los de la hoja ──
+    // ── 2. ¿QUÉ HA CAMBIADO EN ESTE DISPOSITIVO? ──
+    // La hoja de Google es la fuente de verdad. Solo se sube lo que se ha
+    // modificado aquí desde la última sincronización. Si no hay cambios, esta
+    // sincronización es SOLO DE LECTURA y no toca la hoja.
+    const base = DB.get('syncBase');            // null = este dispositivo nunca sincronizó
+    const primeraVez = !base;
+
+    const antes = {};
+    ENTIDADES.forEach(def=>{ antes[def.clave]=JSON.parse(JSON.stringify(state[def.clave]||[])); });
+    const antesBorrados = JSON.parse(JSON.stringify(state.borrados||[]));
+    const antesConfig   = JSON.parse(JSON.stringify(state.config||{}));
+
+    // Conservar una copia local antes de la primera sincronización, por si acaso
+    if(primeraVez){
+      try{
+        if(!DB.get('respaldoPreSync')){
+          const copia={ fecha:new Date().toISOString(), config:antesConfig, borrados:antesBorrados };
+          ENTIDADES.forEach(def=>{ copia[def.clave]=antes[def.clave]; });
+          DB.set('respaldoPreSync', copia);
+        }
+      }catch(e){ console.warn('no pude guardar la copia previa', e); }
+    }
+
+    const cambioLocal = {};
+    ENTIDADES.forEach(def=>{
+      cambioLocal[def.clave] = (base && base[def.clave]) ? !iguales(state[def.clave], base[def.clave]) : false;
+    });
+
+    // ── 3. BORRADOS: unión de los locales y los de la hoja ──
     const borrados = Array.isArray(state.borrados)? [...state.borrados] : [];
     (hojas['Borrados']||[]).slice(1).forEach(f=>{
       if(!f || !f[0] || f[1]===undefined || f[1]==='') return;
@@ -3776,64 +3836,90 @@ async function syncGoogle(auto=false){
       if(!borrados.some(x=>x.entidad===b.entidad && String(x.refId)===b.refId)) borrados.push(b);
     });
 
-    // ── 3. MEZCLA (alumnos primero: el resto resuelve nombres con ellos) ──
-    const base = DB.get('syncBase') || {};
+    // ── 4. MEZCLA ──
+    // Alumnos primero: el resto resuelve nombres con ellos.
+    // En la PRIMERA sincronización, si la hoja ya tiene datos, manda la hoja.
     const conflictos = [];
     const ctx = { alumnos: [] };
 
     const defAlumnos = entidadPorClave('alumnos');
-    const resAlumnos = mezclarEntidad(defAlumnos, state.alumnos, parsearHoja(defAlumnos, hojas['Alumnos'], ctx), base.alumnos, ctx);
+    const remAlumnos = parsearHoja(defAlumnos, hojas['Alumnos'], ctx);
+    const resAlumnos = (primeraVez && !hojaVacia('Alumnos'))
+      ? { datos: remAlumnos, conflictos: [] }
+      : mezclarEntidad(defAlumnos, state.alumnos, remAlumnos, base&&base.alumnos, ctx);
     state.alumnos = aplicarBorrados(resAlumnos.datos, 'alumnos', borrados);
     conflictos.push(...resAlumnos.conflictos);
     ctx.alumnos = state.alumnos;
 
     ENTIDADES.filter(e=>e.clave!=='alumnos').forEach(def=>{
       const remoto = parsearHoja(def, hojas[def.hoja], ctx);
-      const res = mezclarEntidad(def, state[def.clave], remoto, base[def.clave], ctx);
+      const res = (primeraVez && !hojaVacia(def.hoja))
+        ? { datos: remoto, conflictos: [] }
+        : mezclarEntidad(def, state[def.clave], remoto, base&&base[def.clave], ctx);
       state[def.clave] = aplicarBorrados(res.datos, def.clave, borrados);
       conflictos.push(...res.conflictos);
     });
 
     state.borrados = borrados;
     state.asistencia = normalizarAsistencia(state.asistencia);
-    state.config = mergeConfig(state.config, (hojas['Configuracion']||[]).slice(1), base.config);
+    state.config = mergeConfig(state.config, (hojas['Configuracion']||[]).slice(1), base&&base.config);
 
-    // ── 4. GUARDAR en el dispositivo ──
+    // ── 5. GUARDAR en el dispositivo ──
     ENTIDADES.forEach(def=>save(def.clave));
     save('borrados');
     save('config');
 
-    // ── 5. SUBIR todo a Sheets ──
+    // ── 6. SUBIR SOLO LO QUE HA CAMBIADO AQUÍ ──
+    // Primera vez: solo se rellenan las hojas que estén vacías.
+    // Después: solo las entidades tocadas en este dispositivo.
+    const subidas = [];
     for(const def of ENTIDADES){
+      const hayDatos = (state[def.clave]||[]).length > 0;
+      const subir = primeraVez ? (hojaVacia(def.hoja) && hayDatos) : cambioLocal[def.clave];
+      if(!subir) continue;
       await writeSheet(def.hoja, def.cabeceras, (state[def.clave]||[]).map(def.aFila));
+      subidas.push(def.hoja);
     }
-    await writeSheet('Configuracion', ['Clave','Valor'], Object.entries(state.config).map(([k,v])=>[k,v]));
-    await writeSheet('Borrados', ['Entidad','RefID','Fecha'], borrados.map(b=>[b.entidad,b.refId,b.fecha]));
+    const subirConfig = (base && base.config)
+      ? !iguales(state.config, base.config)
+      : (Object.keys(state.config||{}).length>0 && hojaVacia('Configuracion'));
+    if(subirConfig){
+      await writeSheet('Configuracion', ['Clave','Valor'], Object.entries(state.config).map(([k,v])=>[k,v]));
+      subidas.push('Configuracion');
+    }
+    const subirBorrados = (base && base.borrados)
+      ? !iguales(state.borrados, base.borrados)
+      : (borrados.length>0 && hojaVacia('Borrados'));
+    if(subirBorrados){
+      await writeSheet('Borrados', ['Entidad','RefID','Fecha'], borrados.map(b=>[b.entidad,b.refId,b.fecha]));
+      subidas.push('Borrados');
+    }
 
-    // ── 6. GUARDAR LA BASE (estado tras un sync correcto) ──
+    // ── 7. GUARDAR LA BASE (estado tras un sync correcto) ──
     const nuevaBase = {};
     ENTIDADES.forEach(def=>{ nuevaBase[def.clave]=JSON.parse(JSON.stringify(state[def.clave]||[])); });
-    nuevaBase.config = JSON.parse(JSON.stringify(state.config||{}));
+    nuevaBase.config   = JSON.parse(JSON.stringify(state.config||{}));
+    nuevaBase.borrados = JSON.parse(JSON.stringify(state.borrados||[]));
     DB.set('syncBase', nuevaBase);
 
-    // ── 7. ACTUALIZAR LA INTERFAZ ──
-    if(typeof renderAlumnos === 'function') renderAlumnos();
-    if(typeof renderPagosMes === 'function') renderPagosMes();
-    if(typeof renderHistorialPagos === 'function') renderHistorialPagos();
-    if(typeof renderUniformes === 'function') renderUniformes();
-    if(typeof renderPiezas === 'function') renderPiezas();
-    if(typeof renderNotas === 'function') renderNotas();
-    if(typeof renderDashboard === 'function') renderDashboard();
-    if(typeof renderListaAsistencia === 'function'){
-      poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia();
-    }
+    // ── 8. REPINTAR SOLO SI ALGO CAMBIÓ ──
+    // Si no cambió nada, no se toca la interfaz: evita parpadeos y saltos.
+    let huboCambios = false;
+    ENTIDADES.forEach(def=>{ if(!iguales(antes[def.clave], state[def.clave])) huboCambios = true; });
+    if(!iguales(antesBorrados, state.borrados)) huboCambios = true;
+    if(!iguales(antesConfig, state.config)) huboCambios = true;
+    if(huboCambios) repintarTodo();
 
     const ts = new Date().toLocaleString('es-MX');
     const el = document.getElementById('google-status');
     if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
-    if(!auto) toast('✅ Sincronizado con Google Sheets');
+    if(!auto){
+      toast(subidas.length
+        ? ('Sincronizado. Se subió: '+subidas.join(', '))
+        : 'Sincronizado. No había cambios que subir');
+    }
 
-    // ── 8. AVISAR DE CONFLICTOS ──
+    // ── 9. AVISAR DE CONFLICTOS ──
     ultimosConflictos = conflictos;
     if(conflictos.length) mostrarConflictos(conflictos);
 
@@ -3843,12 +3929,68 @@ async function syncGoogle(auto=false){
   } finally {
     syncEnCurso = false;
     if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
-    // Si alguien pidió sincronizar mientras estábamos, se hace ahora
     if(syncPendiente){
       syncPendiente = false;
       setTimeout(function(){ syncGoogle(true); }, 60);
     }
   }
+}
+
+// Repinta las vistas que dependen de los datos sincronizados
+function repintarTodo(){
+  if(typeof renderAlumnos === 'function') renderAlumnos();
+  if(typeof renderPagosMes === 'function') renderPagosMes();
+  if(typeof renderHistorialPagos === 'function') renderHistorialPagos();
+  if(typeof renderUniformes === 'function') renderUniformes();
+  if(typeof renderPiezas === 'function') renderPiezas();
+  if(typeof renderNotas === 'function') renderNotas();
+  if(typeof renderModalidadesCfg === 'function') renderModalidadesCfg();
+  if(typeof renderListaPromociones === 'function') renderListaPromociones();
+  if(typeof renderDashboard === 'function') renderDashboard();
+  if(typeof renderHorario === 'function') renderHorario();
+  if(typeof renderListaAsistencia === 'function'){
+    poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia();
+  }
+}
+
+// ══ SINCRONIZACIÓN AUTOMÁTICA ══
+// Revisa la hoja cada cierto tiempo para recoger lo que se haya registrado desde
+// otro dispositivo. Como syncGoogle solo sube lo que cambió aquí, esta lectura
+// periódica no toca la hoja.
+let autoSyncInterval = null;
+let ultimoDespertarSync = 0;
+
+// Al volver a la pestaña (o a la ventana) se pregunta ENSEGUIDA: es justo el
+// momento en que la persona va a mirar los datos. Antes había que esperar al
+// siguiente tic del temporizador, que podía ser casi un minuto.
+function alVolverALaPestana(){
+  if(document.visibilityState !== 'visible') return;
+  if(!gAccessToken || syncEnCurso) return;
+  const ahora = Date.now();
+  if(ahora - ultimoDespertarSync < 3000) return;   // no repetir si acaba de pasar
+  ultimoDespertarSync = ahora;
+  syncGoogle(true);
+}
+
+function iniciarAutoSync(){
+  detenerAutoSync();
+  const guardado = Number(state.config && state.config.autoSyncSegundos);
+  const segundos = isNaN(guardado) ? 15 : guardado;   // por defecto, 15 segundos
+  if(!segundos || segundos <= 0) return;              // 0 = desactivado
+  autoSyncInterval = setInterval(function(){
+    if(document.visibilityState !== 'visible') return;   // no gastar cuota en segundo plano
+    if(!gAccessToken) return;
+    if(syncEnCurso) return;
+    syncGoogle(true);
+  }, segundos * 1000);
+  document.addEventListener('visibilitychange', alVolverALaPestana);
+  window.addEventListener('focus', alVolverALaPestana);
+}
+
+function detenerAutoSync(){
+  if(autoSyncInterval){ clearInterval(autoSyncInterval); autoSyncInterval=null; }
+  document.removeEventListener('visibilitychange', alVolverALaPestana);
+  window.removeEventListener('focus', alVolverALaPestana);
 }
 
 // ── Aviso de conflictos ──
@@ -3905,9 +4047,7 @@ function aplicarConflictosRemotos(lista){
     if(i>=0) arr[i]=c.remoto;
   });
   ENTIDADES.forEach(def=>save(def.clave));
-  renderAlumnos(); renderDashboard(); renderPagosMes(); renderHistorialPagos();
-  renderUniformes(); renderNotas();
-  if(typeof renderListaAsistencia === 'function') renderListaAsistencia();
+  repintarTodo();
   toast('Se adoptaron los cambios del otro dispositivo');
   syncGoogle(true);
 }
@@ -3935,7 +4075,7 @@ async function importarDesdeSheets(){
 
   customConfirm('¿Importar datos desde Google Sheets? Esto reemplazará los datos locales de este dispositivo con los de la hoja.', async ()=>{
     try {
-      toast('⏳ Importando desde Sheets...');
+      toast('Importando desde Sheets...','info');
       const defAlumnos = entidadPorClave('alumnos');
       const ctx = { alumnos: [] };
       state.alumnos = parsearHoja(defAlumnos, await readSheet('Alumnos'), ctx);
@@ -3962,7 +4102,7 @@ async function importarDesdeSheets(){
       renderAlumnos(); renderDashboard(); renderPagosMes(); renderUniformes();
       renderNotas(); renderPiezas();
       if(typeof renderListaAsistencia === 'function'){ poblarSelectClaseAsistencia(); renderListaAsistencia(); renderHistAsistencia(); }
-      toast('✅ Datos importados desde Google Sheets');
+      toast('Datos importados desde Google Sheets');
     } catch(e){
       toast('Error al importar: '+e.message, 'error');
     }
@@ -4020,7 +4160,7 @@ function restoreGoogleSession(){
   gAccessToken = token;
   gUserEmail = email || '';
   setGoogleStatus(true, true); // skipSync porque haremos sync manualmente abajo
-  toast('✅ Sesión restaurada: '+gUserEmail);
+  toast('Sesión restaurada: '+gUserEmail);
   // Hacer sync para traer datos de otros dispositivos
   syncGoogle(true);
   return true;
