@@ -555,6 +555,10 @@ textarea{resize:vertical;min-height:80px}
       <div id="google-auth-status" style="display:flex;align-items:center;gap:6px">
         <span id="google-user-chip" style="display:none;font-size:12px;color:var(--gray-600);background:var(--gray-100);padding:4px 10px;border-radius:20px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="btn btn-outline btn-sm" id="btn-sync" onclick="syncGoogle()" style="display:none">🔄 Sync</button>
+        <!-- Aviso visible cuando algo no ha llegado a la hoja. En el móvil el
+             botón «Sincronizar» está oculto, así que hace falta algo que se vea
+             y que sirva para reintentar. -->
+        <button class="btn btn-sm" id="btn-sync-pendiente" onclick="accionAvisoSync()" style="display:none;background:#fef3c7;border:1px solid #fde68a;color:#92400e;font-size:11.5px;padding:5px 9px;border-radius:6px;cursor:pointer"></button>
         <button class="btn btn-outline btn-sm" id="btn-google-login" onclick="googleSignIn()">🔗 Conectar Google</button>
       </div>
       <button class="btn btn-primary btn-sm" onclick="limpiarFormAlumno();openModal('modal-alumno')">+ Nuevo alumno</button>
@@ -957,6 +961,10 @@ textarea{resize:vertical;min-height:80px}
             <p style="font-size:12.5px;color:var(--gray-400);line-height:1.6">Exporta todos los datos como archivo JSON para guardar un respaldo. Puedes importarlo después para restaurar la información.</p>
             <button class="btn btn-outline" onclick="exportarDatos()" style="justify-content:center">📥 Exportar datos (JSON)</button>
             <button class="btn btn-outline" onclick="importarDatos()" style="justify-content:center">📤 Importar datos (JSON)</button>
+            <!-- La primera sincronización de un dispositivo trae los datos de la
+                 hoja y reemplaza lo local. La app guarda una copia justo antes;
+                 desde aquí se recupera si algo se perdió. -->
+            <button class="btn btn-outline" id="btn-copia-previa" onclick="exportarCopiaPreviaSync()" style="justify-content:center;display:none">🕓 Descargar copia anterior a la 1ª sincronización</button>
             <input type="file" id="import-file" accept=".json" style="display:none" onchange="procesarImport(event)">
             <div style="height:1px;background:var(--gray-100);margin:4px 0"></div>
             <p style="font-size:12px;color:#dc2626;font-weight:500">⚠️ La siguiente acción es irreversible</p>
@@ -2886,6 +2894,7 @@ function cargarConfig(){
   set('cfg-autosync', String(c.autoSyncSegundos===undefined?15:c.autoSyncSegundos));
   renderListaPromociones();
   renderModalidadesCfg();
+  mostrarBotonCopiaPrevia();   // sólo aparece si la app guardó esa copia
 }
 
 function guardarConfig(){
@@ -3263,6 +3272,23 @@ function exportarDatos(){
   const a=document.createElement('a'); a.href='data:application/json;charset=utf-8,'+encodeURIComponent(data);
   a.download=`pua-e-te-ora-backup-${new Date().toISOString().split('T')[0]}.json`; a.click();
   toast('Datos exportados');
+}
+
+// Copia que la app guarda sola justo antes de la PRIMERA sincronización de un
+// dispositivo, porque en esa primera vez la hoja manda y reemplaza lo local.
+function hayCopiaPreviaSync(){ try { return !!DB.get('respaldoPreSync'); } catch(e){ return false; } }
+function mostrarBotonCopiaPrevia(){
+  const b = document.getElementById('btn-copia-previa');
+  if(b) b.style.display = hayCopiaPreviaSync() ? 'inline-flex' : 'none';
+}
+function exportarCopiaPreviaSync(){
+  const copia = DB.get('respaldoPreSync');
+  if(!copia){ toast('No hay copia anterior guardada','error'); return; }
+  const fecha = copia.fecha ? String(copia.fecha).split('T')[0] : 'sin-fecha';
+  const data = JSON.stringify(copia, null, 2);
+  const a=document.createElement('a'); a.href='data:application/json;charset=utf-8,'+encodeURIComponent(data);
+  a.download=`pua-e-te-ora-copia-antes-de-sincronizar-${fecha}.json`; a.click();
+  toast('Copia anterior descargada');
 }
 function importarDatos(){ document.getElementById('import-file').click(); }
 function procesarImport(e){
@@ -3845,10 +3871,52 @@ function mergeConfig(local, remotoFilas, base){
 let syncEnCurso = false;
 let syncPendiente = false;   // alguien pidió sincronizar mientras había una en curso
 let ultimosConflictos = [];
+let avisoSync = null;        // {texto, titulo} que se ve en la barra superior
+let ultimoAvisoNoSync = 0;
+
+// ── Que un fallo de sincronización NUNCA sea invisible ──
+// En el móvil el botón «Sincronizar» está oculto y el estado de Google sólo se
+// ve dentro de Configuración. Así, un sync que no llega a hacerse pasaba
+// desapercibido: la app decía «guardado» y el cambio no llegaba a la hoja.
+function ponerAvisoSync(texto, titulo){
+  avisoSync = { texto, titulo };
+  const chip = document.getElementById('btn-sync-pendiente');
+  if(chip){ chip.textContent = texto; chip.title = titulo || texto; chip.style.display = 'inline-block'; }
+}
+function quitarAvisoSync(){
+  avisoSync = null;
+  const chip = document.getElementById('btn-sync-pendiente');
+  if(chip) chip.style.display = 'none';
+}
+function avisarNoSincronizado(motivo){
+  ponerAvisoSync('⚠ Sin subir', 'Guardado en este dispositivo, pero no en la hoja: '+motivo+' Toca aquí para reintentar.');
+  const ahora = Date.now();
+  if(ahora - ultimoAvisoNoSync < 8000) return;   // no repetir en cada guardado
+  ultimoAvisoNoSync = ahora;
+  // El aviso se muestra un instante DESPUÉS a propósito: quien guarda suele
+  // enseñar su propio mensaje («Modalidad actualizada») justo después de pedir
+  // la sincronización, y si no, este quedaría tapado y la app seguiría
+  // pareciendo decir que todo fue bien. Ese era el fallo original.
+  setTimeout(()=>toast('Guardado en este dispositivo, pero NO se sincronizó: '+motivo, 'error'), 40);
+}
+
+// El aviso de la barra superior hace dos cosas distintas según lo que diga.
+function accionAvisoSync(){
+  if(avisoSync && avisoSync.texto === '⚠ Sin subir'){ syncGoogle(); return; }
+  showPage('configuracion', null);   // el aviso informativo se explica ahí
+  quitarAvisoSync();
+}
 
 async function syncGoogle(auto=false){
-  if(!gAccessToken){ return; }
-  if(!state.config.sheetsId){ return; }
+  if(!gAccessToken){
+    // Antes salía en silencio y el cambio no llegaba nunca a la hoja.
+    avisarNoSincronizado('no hay sesión de Google.');
+    return;
+  }
+  if(!state.config.sheetsId){
+    avisarNoSincronizado('falta el ID de la hoja de cálculo.');
+    return;
+  }
   // Si ya hay una sincronización en marcha NO se descarta la petición: se
   // reintenta al terminar.
   if(syncEnCurso){ syncPendiente = true; return; }
@@ -3915,12 +3983,17 @@ async function syncGoogle(auto=false){
     // En la PRIMERA sincronización, si la hoja ya tiene datos, manda la hoja.
     const conflictos = [];
     const ctx = { alumnos: [] };
+    // Hojas en las que la hoja ha reemplazado lo que había en el dispositivo.
+    // Se avisa: antes esto pasaba en silencio y parecía que el cambio se había
+    // guardado cuando en realidad lo había pisado la hoja.
+    const reemplazadas = [];
 
     const defAlumnos = entidadPorClave('alumnos');
     const remAlumnos = parsearHoja(defAlumnos, hojas['Alumnos'], ctx);
     const resAlumnos = (primeraVez && !hojaVacia('Alumnos'))
       ? { datos: remAlumnos, conflictos: [] }
       : mezclarEntidad(defAlumnos, state.alumnos, remAlumnos, base&&base.alumnos, ctx);
+    if(primeraVez && !hojaVacia('Alumnos')) reemplazadas.push('Alumnos');
     state.alumnos = aplicarBorrados(resAlumnos.datos, 'alumnos', borrados);
     conflictos.push(...resAlumnos.conflictos);
     ctx.alumnos = state.alumnos;
@@ -3930,6 +4003,7 @@ async function syncGoogle(auto=false){
       const res = (primeraVez && !hojaVacia(def.hoja))
         ? { datos: remoto, conflictos: [] }
         : mezclarEntidad(def, state[def.clave], remoto, base&&base[def.clave], ctx);
+      if(primeraVez && !hojaVacia(def.hoja)) reemplazadas.push(def.hoja);
       state[def.clave] = aplicarBorrados(res.datos, def.clave, borrados);
       conflictos.push(...res.conflictos);
     });
@@ -4005,6 +4079,22 @@ async function syncGoogle(auto=false){
     const ts = new Date().toLocaleString('es-MX');
     const el = document.getElementById('google-status');
     if(el) el.innerHTML='<span style="color:var(--green)">✅ Último sync: '+ts+'</span>';
+
+    // La sincronización ha ido bien: el aviso de «sin subir» ya no aplica.
+    if(avisoSync && avisoSync.texto === '⚠ Sin subir') quitarAvisoSync();
+
+    // Primera sincronización de este dispositivo: la hoja ha reemplazado lo que
+    // hubiera aquí. Antes ocurría en silencio y parecía que un cambio recién
+    // hecho se había guardado; ahora se dice claramente y se explica cómo
+    // recuperar la copia anterior.
+    if(primeraVez && reemplazadas.length){
+      const lista = reemplazadas.join(', ');
+      ponerAvisoSync('⚠ Datos traídos de la hoja', 'Este dispositivo no había sincronizado nunca: se trajeron los datos de la hoja y se reemplazó lo local ('+lista+').');
+      // Igual que el aviso de «sin subir»: un instante después, para que no lo
+      // tape el mensaje que muestra quien acaba de guardar.
+      const aviso = 'Primera sincronización: se trajeron los datos de la hoja ('+lista+'). Si habías cambiado algo aquí, tu copia anterior está en Configuración → Datos y respaldo.';
+      setTimeout(()=>toast(aviso, 'error'), 40);
+    }
     if(!auto){
       toast(subidas.length
         ? ('Sincronizado. Se subió: '+subidas.join(', '))
@@ -4017,7 +4107,8 @@ async function syncGoogle(auto=false){
 
   } catch(e){
     console.error('Sync error:', e);
-    toast('Error al sincronizar: '+e.message, 'error');
+    // También deja el aviso en la barra: en el móvil un toast se pierde.
+    avisarNoSincronizado(e.message || 'error de red');
   } finally {
     syncEnCurso = false;
     if(btn){ btn.textContent='🔄 Sync'; btn.disabled=false; }
